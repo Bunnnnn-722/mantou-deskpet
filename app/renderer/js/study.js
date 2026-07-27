@@ -778,21 +778,31 @@ function drawCardPet(ctx, cx, bottomY) {
       }
     } catch {}
   }
-  // 码绘馒头兜底:矢量小馒头等比放大画在同一锚点
-  const s = 1.9, w = 200 * s, h = 158 * s, xb = cx - w / 2, yb = bottomY - h;
+  // 码绘馒头兜底:按本体 SVG 原样重画(黑玻璃形态:包子形身体+左上轮廓光+发光眼)
+  const s = 3.4, w = 112 * s, h = 91 * s, xb = cx - w / 2, yb = bottomY - h;
   ground(w);
+  const bunPath = new Path2D('M111.621 55.1379C111.621 85.5898 86.6335 91 55.8103 91C24.9871 91 0 85.5898 0 55.1379C0 24.6861 24.9871 0 55.8103 0C86.6335 0 111.621 24.6861 111.621 55.1379Z');
   ctx.save();
-  const g = ctx.createLinearGradient(xb, yb, xb + w * 0.4, bottomY);
-  g.addColorStop(0, 'rgba(255,255,255,0.94)'); g.addColorStop(1, 'rgba(236,243,248,0.85)');
-  ctx.beginPath();
-  ctx.roundRect(xb, yb, w, h, [w / 2, w / 2, 30 * s, 30 * s]);
-  ctx.fillStyle = g; ctx.fill();
-  ctx.strokeStyle = 'rgba(255,255,255,0.95)'; ctx.lineWidth = 2 * s; ctx.stroke();
-  ctx.shadowColor = 'rgba(255,255,255,0.95)'; ctx.shadowBlur = 10 * s;
+  ctx.translate(xb, yb); ctx.scale(s, s);
+  ctx.save();                                   // 主色错位剪影(与包形象同款海报语言)
+  ctx.translate(14 / s, 14 / s);
+  ctx.fillStyle = 'rgba(95,168,196,0.4)'; ctx.fill(bunPath);
+  ctx.restore();
+  const g = ctx.createLinearGradient(0, 0, 0, 91);
+  g.addColorStop(0, 'rgba(24,24,27,0.97)'); g.addColorStop(1, 'rgba(13,13,15,0.97)');
+  ctx.fillStyle = g; ctx.fill(bunPath);
+  const eg = ctx.createLinearGradient(10, 5, 102, 88); // 轮廓光:左上亮右下弱(edgeGrad 同款)
+  eg.addColorStop(0, 'rgba(255,255,255,0.95)');
+  eg.addColorStop(0.32, 'rgba(255,255,255,0.10)');
+  eg.addColorStop(0.68, 'rgba(255,255,255,0.10)');
+  eg.addColorStop(1, 'rgba(255,255,255,0.40)');
+  ctx.shadowColor = 'rgba(255,255,255,0.4)'; ctx.shadowBlur = 6;
+  ctx.strokeStyle = eg; ctx.lineWidth = 1.6; ctx.stroke(bunPath);
+  ctx.shadowColor = 'rgba(255,255,255,0.85)'; ctx.shadowBlur = 16;
   ctx.fillStyle = '#fff';
-  for (const dx of [-32 * s, 32 * s]) {
+  for (const ex of [33.4, 58.9]) {
     ctx.beginPath();
-    ctx.ellipse(cx + dx, yb + h * 0.42, 10.5 * s, 14.5 * s, 0, 0, Math.PI * 2);
+    ctx.ellipse(ex, 38.8, 8.3, 16.8, 0, 0, Math.PI * 2);
     ctx.fill();
   }
   ctx.restore();

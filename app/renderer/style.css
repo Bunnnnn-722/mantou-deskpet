@@ -779,7 +779,7 @@ html.dark .st-lrow:hover{background:rgba(255,255,255,0.08);}
 .st-lrow.add{color:var(--muted-2);justify-content:center;font-size:11.5px;
   background:transparent;border-top:1px dashed rgba(127,127,127,0.25);}
 
-/* ======== 自习室演出池(07-26 定稿移植;沙盒:mantou-private/原型/馒头动效_定位编辑版.html)
+/* ======== 自习室演出池(07-26 定稿移植;沙盒:私有仓库的定位编辑原型)
    码绘专属:场景类挂 #pet(sc-think/sc-cat/sc-fish/sc-tea/sc-busted),身体动效打
    #bun-bob(不碰 #pet 的 transform,那是拖拽的);包形象走 slack_x、sleep、busted 槽位。
    坐标系:沙盒按 2 倍馒头编舞,app 是 1.5 倍——道具套 .ps 缩放壳(scale 0.75),
