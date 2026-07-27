@@ -431,6 +431,14 @@ ipcMain.handle('persona-delete', (_e, id) => {
 // 激活/切回馒头(id=null):只写配置，渲染层收 config-changed 自行热切换
 ipcMain.handle('persona-activate', (_e, id) => {
   try {
+    // 启用底线:待机动画必须有(自建包传完 idle 才算能站上桌面)
+    if (id) {
+      try {
+        const man = JSON.parse(fs.readFileSync(
+          path.join(PERSONAS_DIR(), id, 'manifest.json'), 'utf8'));
+        if (!man.idle) return false;
+      } catch { return false; }
+    }
     const cfg = JSON.parse(fs.readFileSync(configPath(), 'utf8'));
     if (id) cfg.activePersona = id; else delete cfg.activePersona;
     fs.writeFileSync(configPath(), JSON.stringify(cfg, null, 2));
@@ -498,6 +506,85 @@ ipcMain.handle('persona-manifest', (_e, id) => {
       manifest: JSON.parse(fs.readFileSync(path.join(dir, 'manifest.json'), 'utf8')),
     };
   } catch { return null; }
+});
+
+/* ---- 包内生产(配置后台雪碧图工坊):建空包 / 写动画 / 删动画 / 说明书 ---- */
+// 新建人设:只要名字就能建(persona.json + 空 manifest);性格等信息由渲染层
+// 写进 config.personaBindings(不填=运行时默认底稿),这里不管
+ipcMain.handle('persona-create', (_e, name) => {
+  const nm = String(name || '').trim().slice(0, 24);
+  if (!nm) return { ok: false, err: '名字不能为空' };
+  // id 用时间戳+随机,与导入包的作者 id 空间天然不撞
+  const id = 'u' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  try {
+    const dir = path.join(PERSONAS_DIR(), id);
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, 'persona.json'),
+      JSON.stringify({ id, name: nm, displayHeight: 360 }, null, 1));
+    fs.writeFileSync(path.join(dir, 'manifest.json'), '{}');
+    return { ok: true, id, name: nm };
+  } catch (e) { return { ok: false, err: String(e.message || e).slice(0, 120) }; }
+});
+
+// 写入一条动画:渲染层抠图打包好的雪碧图(webp dataURL)+manifest 条目落盘。
+// entry 只收数值字段,防止渲染层被注入奇怪结构
+ipcMain.handle('persona-write-anim', (_e, { id, slot, dataUrl, entry }) => {
+  try {
+    if (!/^[\w-]+$/.test(id) || !/^[a-z0-9_]{1,24}$/.test(slot || '')) return { ok: false, err: '参数非法' };
+    const m = /^data:image\/webp;base64,(.+)$/.exec(dataUrl || '');
+    if (!m) return { ok: false, err: '雪碧图数据非法' };
+    const dir = path.join(PERSONAS_DIR(), id);
+    const manPath = path.join(dir, 'manifest.json');
+    const man = JSON.parse(fs.readFileSync(manPath, 'utf8'));
+    const ent = {};
+    for (const k of ['frames', 'cols', 'fw', 'fh', 'fps', 'dx', 'dy', 'canvasW', 'canvasH']) {
+      const v = +entry[k];
+      if (!Number.isFinite(v)) return { ok: false, err: `manifest 缺字段 ${k}` };
+      ent[k] = k === 'fps' ? v : Math.round(v);
+    }
+    fs.writeFileSync(path.join(dir, slot + '.webp'), Buffer.from(m[1], 'base64'));
+    man[slot] = ent;
+    fs.writeFileSync(manPath, JSON.stringify(man, null, 1));
+    if (win && !win.isDestroyed()) win.webContents.send('persona-refresh');
+    return { ok: true };
+  } catch (e) { return { ok: false, err: String(e.message || e).slice(0, 120) }; }
+});
+
+ipcMain.handle('persona-remove-anim', (_e, { id, slot }) => {
+  try {
+    if (!/^[\w-]+$/.test(id) || !/^[a-z0-9_]{1,24}$/.test(slot || '')) return { ok: false, err: '参数非法' };
+    const cfg = JSON.parse(fs.readFileSync(configPath(), 'utf8'));
+    if (slot === 'idle' && cfg.activePersona === id)
+      return { ok: false, err: 'idle 是启用底线,先切回馒头再删' };
+    const dir = path.join(PERSONAS_DIR(), id);
+    const manPath = path.join(dir, 'manifest.json');
+    const man = JSON.parse(fs.readFileSync(manPath, 'utf8'));
+    delete man[slot];
+    fs.rmSync(path.join(dir, slot + '.webp'), { force: true });
+    fs.writeFileSync(manPath, JSON.stringify(man, null, 1));
+    if (win && !win.isDestroyed()) win.webContents.send('persona-refresh');
+    return { ok: true };
+  } catch (e) { return { ok: false, err: String(e.message || e).slice(0, 120) }; }
+});
+
+// 操作说明:打包在 app 里的 markdown。打开=拷到临时目录再交给系统默认程序
+// (asar 里的文件 shell.openPath 打不开,必须先落地);导出=存到用户选的位置
+ipcMain.handle('persona-open-guide', async (_e, mode) => {
+  const src = path.join(__dirname, 'docs', '角色包制作指南.md');
+  try {
+    if (mode === 'export') {
+      const { dialog } = require('electron');
+      const r = await dialog.showSaveDialog({ defaultPath: '角色包制作指南.md' });
+      if (r.canceled || !r.filePath) return { ok: false, err: 'canceled' };
+      fs.copyFileSync(src, r.filePath);
+      return { ok: true, path: r.filePath };
+    }
+    const os = require('os');
+    const tmp = path.join(os.tmpdir(), 'mantou-角色包制作指南.md');
+    fs.copyFileSync(src, tmp);
+    const err = await require('electron').shell.openPath(tmp);
+    return err ? { ok: false, err } : { ok: true };
+  } catch (e) { return { ok: false, err: String(e.message || e).slice(0, 120) }; }
 });
 
 // 今日天气(wttr.in 按 IP 定位，免 key)

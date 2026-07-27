@@ -370,6 +370,9 @@ function setupPetMouse() {
     let anim = 'touch_body';
     const hz = Persona.active && Persona.hitZone(px, py, rect);
     if (hz) ({ anim, part } = hz);
+    // 点击门控(2026-07-28 用户口径):包形象没配这条点击动画就没有任何反应
+    // ——不播兜底、不弹跳、不搭话;码绘馒头动画全,不走这里
+    if (Persona.active && !Persona.has(anim)) return;
     // 连戳彩蛋:8 秒内戳 5 次 → 满头黑线嫌弃你(冷却 60s)
     const now = Date.now();
     S.pokes = S.pokes.filter((t) => now - t < 8000);

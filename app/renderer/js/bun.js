@@ -154,20 +154,13 @@ const BUN = {
     this.pet.appendChild(s);
     setTimeout(() => s.remove(), kind === 'tear' ? 3300 : 3500);
   },
-  /* 包形象下:戳它=播包里的 touch 动画(有的话)，没有才容器弹跳兜底 */
-  _poke() {
-    const key = 'touch_' + (Math.random() < 0.5 ? 'head' : 'body');
-    if (Persona.has(key)) { Player.play(key, { prio: PRIORITY.touch }); return; }
-    if (Persona.has('touch_head')) { Player.play('touch_head', { prio: PRIORITY.touch }); return; }
-    this.burst('anim-surprise', 780);
-  },
   enter(name) {
     // name=null = 只清码绘状态(包形象接管画面，码绘休眠);touch_* 在包形象下
-    // 优先播包内 touch 动画，包没有才容器小弹跳兜底
+    // 只播包内动画——包没配的点击不再弹跳兜底(2026-07-28 用户口径:没有就没反应,
+    // 正常点击已在 state-ui 门控拦下,这里兜住其余调用路径)
     if (name == null || (Persona.active && name && name.startsWith('touch_'))) {
       this.pet.classList.remove('angry', 'saddroop');
       this.parts(null);
-      if (name) this._poke();
       return;
     }
     // 包形象缺槽位:兜底只保留粒子(泪滴/汗珠/星星)，容器 burst 一律不做——

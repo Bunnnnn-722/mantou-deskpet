@@ -36,6 +36,11 @@ contextBridge.exposeInMainWorld('pet', {
   onPersonaRefresh: (cb) => ipcRenderer.on('persona-refresh', () => cb()),
   personaFile: (id, file) => ipcRenderer.invoke('persona-file', { id, file }),
   personaManifest: (id) => ipcRenderer.invoke('persona-manifest', id),
+  // 雪碧图工坊(配置后台自建角色包)
+  personaCreate: (name) => ipcRenderer.invoke('persona-create', name),
+  personaWriteAnim: (id, slot, dataUrl, entry) => ipcRenderer.invoke('persona-write-anim', { id, slot, dataUrl, entry }),
+  personaRemoveAnim: (id, slot) => ipcRenderer.invoke('persona-remove-anim', { id, slot }),
+  personaOpenGuide: (mode) => ipcRenderer.invoke('persona-open-guide', mode),
   // Agent 本地通讯:通知下发与展示回执
   onNotify: (cb) => ipcRenderer.on('agent-notify', (_e, d) => cb(d)),
   agentShown: (id) => ipcRenderer.send('agent-shown', id),

@@ -43,11 +43,6 @@ h1::before{content:'';display:inline-block;width:7px;height:7px;border-radius:50
   background:var(--accent-soft);color:var(--ink-hi);cursor:pointer;}
 #save:hover{background:rgba(95,168,196,0.24);}
 #status{font-size:11px;color:var(--success);}
-/* 形象 tab:隐藏入口(tab 栏右侧小圆点，1.5s 内连点 5 下展开) */
-#egg-dot{width:8px;height:8px;border-radius:50%;background:var(--hairline);margin-left:auto;
-  align-self:center;cursor:pointer;flex:none;transition:background .2s;}
-#egg-dot:hover{background:var(--accent-line);}
-#tab-persona{display:none;}
 /* 形象卡片 */
 .persona-card{background:rgba(255,255,255,0.7);border:1px solid var(--hairline);border-radius:12px;
   padding:12px 14px;margin-bottom:10px;cursor:pointer;}
@@ -128,7 +123,6 @@ html.dark #persona-preview{background:rgba(255,255,255,0.055);}
   <button class="tab" data-pane="pane-lines">桌宠台词</button>
   <button class="tab" data-pane="pane-log">调试日志</button>
   <button class="tab" data-pane="pane-persona" id="tab-persona">形象</button>
-  <div id="egg-dot" title=""></div>
 </div>
 
 <div class="pane on" id="pane-model"><div id="list-model"></div></div>
@@ -145,7 +139,25 @@ html.dark #persona-preview{background:rgba(255,255,255,0.055);}
   <b>idle 待机动画必传</b>，其余动画/特效都是可选:包里有的自动接管，没有的由通用小动作兜底。
   包可在 persona.json 用 <b>emoDesc:{"情绪名":"使用场合"}</b> 声明自定义情绪(配 emo_情绪名 动画或
   emoAliases 映射)，对话里就能触发;情绪词表与场合说明拼进系统提示词，点「动画清单」可查看。</div>
-  <button id="import-btn">＋ 导入形象包(zip 或文件夹)</button>
+  <div style="display:flex;gap:8px;margin-bottom:12px;">
+    <button id="import-btn" style="margin-bottom:0;flex:1;">＋ 导入形象包(zip 或文件夹)</button>
+    <button id="new-persona-btn" style="font-size:12px;padding:7px 18px;border-radius:10px;border:1px dashed var(--accent-line);background:none;color:var(--accent);cursor:pointer;flex:1;">＋ 新增人设(从零做一个形象)</button>
+  </div>
+  <div id="new-persona-form" style="display:none;margin-bottom:12px;background:var(--card);border:1px solid var(--hairline);border-radius:12px;padding:12px 14px;">
+    <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;font-size:12px;color:var(--muted);">名称
+      <input id="np-name" maxlength="24" placeholder="必填,比如:小雪" style="flex:0 0 180px;background:var(--field);color:var(--ink);border:1px solid var(--hairline);border-radius:9px;padding:7px 10px;font-size:12px;outline:none;"></div>
+    <textarea id="np-perso" rows="3" placeholder="人设(身份+性格,选填;不填就用默认底稿)" style="width:100%;box-sizing:border-box;background:var(--field);color:var(--ink);border:1px solid var(--hairline);border-radius:9px;padding:7px 10px;font-size:12px;font-family:inherit;line-height:1.6;resize:vertical;outline:none;"></textarea>
+    <div class="tip" style="margin:6px 0;">创建后在「动画工坊」里给每个动画槽位上传绿/蓝/品红底视频,自动抠图入包;<b>待机(idle)传好才能启用</b>。</div>
+    <div style="display:flex;gap:8px;"><button id="np-ok" style="font-size:11px;padding:5px 16px;border-radius:8px;border:1px solid var(--accent-line);background:var(--accent-soft);color:var(--ink-hi);cursor:pointer;">创建</button>
+    <button id="np-cancel" style="font-size:11px;padding:5px 16px;border-radius:8px;border:1px solid var(--hairline);background:var(--field);color:var(--muted);cursor:pointer;">取消</button>
+    <span id="np-err" style="font-size:11px;color:var(--gem);align-self:center;"></span></div>
+  </div>
+  <div style="display:flex;gap:10px;align-items:center;margin-bottom:12px;font-size:11px;color:var(--muted);">
+    📖 角色包制作说明
+    <button id="guide-open" class="live-btn">打开阅读</button>
+    <button id="guide-export" class="live-btn">导出文件</button>
+    <span id="guide-r" style="color:var(--success);"></span>
+  </div>
   <div id="persona-list"></div>
   <div id="persona-detail"></div>
   <div id="persona-preview">
@@ -156,6 +168,7 @@ html.dark #persona-preview{background:rgba(255,255,255,0.055);}
 
 <div id="bar"><button id="save">保存并应用</button><span id="status"></span></div>
 <script src="prompts_defaults.js"></script>
+<script src="packstudio.js"></script>
 <script>
 // [key, 标签， 变量提示， 分组('model'|'lines')]
 const META = [
@@ -212,52 +225,18 @@ document.querySelectorAll('.tab').forEach((b) => {
     document.getElementById(b.dataset.pane).classList.add('on');
   });
 });
-/* ---- 形象 tab 可见性:没有任何形象包时，只能靠右侧小圆点 1.5s 连点 5 下临时展开;
- * 一旦导入过包，tab 永久显示(存 localStorage，重启后台也在) ---- */
-const PersonaTab = {
-  KEY: 'mantou_persona_tab',
-  unlock(permanent) {
-    // 必须给具体值:置空串会回落到样式表的 display:none，等于永远解不开(踩过坑)
-    document.getElementById('tab-persona').style.display = 'block';
-    if (permanent) localStorage.setItem(this.KEY, '1');
-  },
-  init() {
-    if (localStorage.getItem(this.KEY)) this.unlock(false);
-    const dot = document.getElementById('egg-dot');
-    let clicks = [];
-    dot.addEventListener('click', () => {
-      const now = Date.now();
-      clicks = clicks.filter((t) => now - t < 1500);
-      clicks.push(now);
-      if (clicks.length >= 5) {
-        clicks = [];
-        this.unlock(false); // 手动摇开只是本次会话;导入成功才永久
-        document.getElementById('tab-persona').click();
-      }
-    });
-  },
-};
-PersonaTab.init();
-
-/* ---- 形象管理 ---- */
+/* ---- 形象管理(2026-07-28 起 tab 常显:雪碧图工坊上线,不再藏彩蛋入口) ---- */
 const PersonaUI = {
   list: [], activeId: null, sel: null, // sel = { personaId, anim }
   async refresh() {
     this.list = await window.pet.personaList();
     const cfg = (await window.pet.getConfig()) || {};
     this.activeId = cfg.activePersona || null;
-    // 有包就永久点亮 tab(重启后台/重传包都在);没包且被删光了回隐藏态
-    if (this.list.length) PersonaTab.unlock(true);
     this.render();
   },
   async render() {
     const box = document.getElementById('persona-list');
     box.innerHTML = '';
-    // 包被删光:收回永久点亮(回到"连点 5 下"的隐藏态);refresh 里有包会再点亮
-    if (!this.list.length) {
-      localStorage.removeItem(PersonaTab.KEY);
-      document.getElementById('tab-persona').style.display = 'none';
-    }
     // 馒头(默认形象)卡片:始终在最上面
     box.appendChild(this.card({
       id: null, name: '馒馒(默认)', builtin: true,
@@ -283,12 +262,16 @@ const PersonaUI = {
           ? (id ? '<button data-act="deactivate">切回馒馒</button>' : '')
           : `<button data-act="activate">${builtin ? '启用' : '启用这个形象'}</button>`}
         <button data-act="perso">人设</button>
-        ${!builtin ? '<button data-act="anims">动画清单</button><button data-act="size">尺寸</button><button data-act="delete" class="danger">删除</button>' : ''}
+        ${!builtin ? '<button data-act="studio">动画工坊</button><button data-act="anims">动画清单</button><button data-act="size">尺寸</button><button data-act="delete" class="danger">删除</button>' : ''}
       </div>`;
     div.querySelectorAll('button').forEach((b) => b.addEventListener('click', async (e) => {
       e.stopPropagation();
       const act = b.dataset.act;
-      if (act === 'activate') { await window.pet.personaActivate(id); await this.refresh(); }
+      if (act === 'activate') {
+        const ok = await window.pet.personaActivate(id);
+        if (!ok && id) alert('这个形象还没有待机(idle)动画,先去「动画工坊」上传一条才能启用。');
+        await this.refresh();
+      }
       else if (act === 'deactivate') { await window.pet.personaActivate(null); await this.refresh(); }
       else if (act === 'delete') {
         if (confirm(`删除形象「${name}」?包文件会从本地移除。`)) {
@@ -335,6 +318,7 @@ const PersonaUI = {
         });
         div.appendChild(row);
       }
+      else if (act === 'studio') PackStudio.show(id, name);
       else if (act === 'anims') this.showAnims(id, name);
       else if (act === 'size') {
         // 内联编辑器(Electron 不支持 window.prompt，弹窗方案会静默失败，踩过坑)
@@ -481,8 +465,8 @@ const PersonaUI = {
     const url = await window.pet.personaFile(pid, anim + '.webp');
     if (!url) return;
     const img = new Image();
-    img.src = url;
-    await img.decode().catch(() => {});
+    // onload 而非 decode():大雪碧图 decode() 在部分 Chromium 环境会挂死(实测)
+    await new Promise((res) => { img.onload = res; img.onerror = res; img.src = url; });
     if (!img.width) return;
     const cv = document.getElementById('pv-canvas');
     cv.width = m.canvasW || m.fw; cv.height = m.canvasH || m.fh;
@@ -492,7 +476,9 @@ const PersonaUI = {
     const ctx = cv.getContext('2d');
     document.getElementById('pv-title').textContent =
       `${anim} · ${m.frames} 帧 @ ${(+m.fps).toFixed(1)}fps(逐帧播放)`;
-    document.getElementById('persona-preview').style.display = '';
+    // 必须给具体值:置空串会回落到样式表的 display:none(大预览框从来没真正
+    // 显示过的存量 bug,2026-07-28 工坊联调抓包)
+    document.getElementById('persona-preview').style.display = 'block';
     let f = 0;
     this._pv.img = img;
     this._pv.timer = setInterval(() => {
@@ -508,11 +494,49 @@ document.getElementById('import-btn').addEventListener('click', async () => {
   btn.textContent = '导入中…';
   const r = await window.pet.personaImport();
   btn.textContent = '＋ 导入形象包(zip 或文件夹)';
-  if (r.ok) {
-    PersonaTab.unlock(true); // 有了第一个包，形象 tab 永久点亮
-    await PersonaUI.refresh(); PersonaUI.showAnims(r.id, r.name);
-  }
+  if (r.ok) { await PersonaUI.refresh(); PersonaUI.showAnims(r.id, r.name); }
   else if (r.err !== 'canceled') alert('导入失败:' + r.err);
+});
+/* ---- 新增人设:名字必填即可建包;性格选填(不填=运行时默认底稿) ---- */
+document.getElementById('new-persona-btn').addEventListener('click', () => {
+  const f = document.getElementById('new-persona-form');
+  f.style.display = f.style.display === 'none' ? 'block' : 'none';
+  if (f.style.display === 'block') document.getElementById('np-name').focus();
+});
+document.getElementById('np-cancel').addEventListener('click', () => {
+  document.getElementById('new-persona-form').style.display = 'none';
+});
+document.getElementById('np-ok').addEventListener('click', async () => {
+  const err = document.getElementById('np-err');
+  const name = document.getElementById('np-name').value.trim();
+  if (!name) { err.textContent = '名字不能为空'; return; }
+  err.textContent = '';
+  const r = await window.pet.personaCreate(name);
+  if (!r.ok) { err.textContent = r.err || '创建失败'; return; }
+  // 人设写进按形象绑定格(与设置面板同一份);不填就不写,运行时用默认底稿
+  const perso = document.getElementById('np-perso').value.trim();
+  if (perso) {
+    const fresh = (await window.pet.getConfig()) || {};
+    fresh.personaBindings = { ...(fresh.personaBindings || {}),
+      [r.id]: { petName: name, customPersonality: perso } };
+    await window.pet.setConfig(fresh);
+  }
+  document.getElementById('new-persona-form').style.display = 'none';
+  document.getElementById('np-name').value = '';
+  document.getElementById('np-perso').value = '';
+  await PersonaUI.refresh();
+  PackStudio.show(r.id, r.name); // 建完直接进工坊传动画
+});
+/* ---- 操作说明:打开=拷临时目录交系统默认程序;导出=另存 ---- */
+document.getElementById('guide-open').addEventListener('click', async () => {
+  const r = await window.pet.personaOpenGuide('open');
+  document.getElementById('guide-r').textContent = r.ok ? '' : '打开失败:' + r.err;
+});
+document.getElementById('guide-export').addEventListener('click', async () => {
+  const r = await window.pet.personaOpenGuide('export');
+  const el = document.getElementById('guide-r');
+  el.textContent = r.ok ? '✓ 已导出' : (r.err === 'canceled' ? '' : '导出失败:' + r.err);
+  setTimeout(() => (el.textContent = ''), 3000);
 });
 PersonaUI.refresh();
 

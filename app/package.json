@@ -33,6 +33,7 @@
       "preload.js",
       "platform.js",
       "renderer/**/*",
+      "docs/**/*",
       "dock_icon.png",
       "!**/*.map"
     ],
