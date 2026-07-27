@@ -1,0 +1,86 @@
+{
+  "name": "mantou-pet",
+  "version": "0.1.3",
+  "description": "馒头桌宠 - 毛玻璃小馒头,纯代码动画,零素材",
+  "main": "main.js",
+  "author": "Bunnnnn-722",
+  "license": "PolyForm-Noncommercial-1.0.0",
+  "homepage": "https://github.com/Bunnnnn-722/mantou-deskpet",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Bunnnnn-722/mantou-deskpet.git"
+  },
+  "scripts": {
+    "start": "electron .",
+    "dist:mac": "electron-builder --mac",
+    "dist:win": "electron-builder --win",
+    "dist": "electron-builder -mw"
+  },
+  "devDependencies": {
+    "electron": "^33.4.11",
+    "electron-builder": "^24.13.3"
+  },
+  "build": {
+    "appId": "local.mantou.deskpet",
+    "productName": "馒头 Bunbun",
+    "directories": {
+      "output": "../dist",
+      "buildResources": "build"
+    },
+    "artifactName": "${name}-${version}-${os}-${arch}.${ext}",
+    "files": [
+      "main.js",
+      "preload.js",
+      "platform.js",
+      "renderer/**/*",
+      "dock_icon.png",
+      "!**/*.map"
+    ],
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        }
+      ],
+      "category": "public.app-category.entertainment",
+      "icon": "build/icon.png",
+      "identity": null
+    },
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ],
+      "icon": "build/icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "artifactName": "${name}-${version}-win-${arch}-setup.${ext}"
+    },
+    "portable": {
+      "artifactName": "${name}-${version}-win-${arch}-portable.${ext}"
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "Bunnnnn-722",
+        "repo": "mantou-deskpet"
+      }
+    ]
+  }
+}

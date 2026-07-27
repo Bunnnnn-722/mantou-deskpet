@@ -1,0 +1,58 @@
+name: Release
+
+# 打 tag（如 v0.1.0）或手动触发 → 云端构建 mac + Windows 安装包，再统一发一个 Release
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  # 第一步：各平台只构建、不发布（避开两个 job 同时发布抢同一个 Release 的竞争）
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: 安装依赖
+        run: npm install
+      - name: 构建安装包（不发布）
+        run: npx electron-builder --publish never
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: false   # mac 不做代码签名
+      - name: 上传构建产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-${{ matrix.os }}
+          path: |
+            dist/*.dmg
+            dist/*.zip
+            dist/*.exe
+
+  # 第二步：两个平台都构建完，下载所有产物，统一发一个草稿 Release
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: 下载所有平台产物
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - name: 发布到 Release（草稿）
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          files: artifacts/**/*
+          fail_on_unmatched_files: true

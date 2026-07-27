@@ -1,0 +1,585 @@
+<!DOCTYPE html>
+<html lang="zh-CN"><head><meta charset="UTF-8"><title>配置后台</title>
+<style>
+/* 雪夜令牌(与 style.css 同源;馒头 UI 重构时一并换肤) */
+/* 馒头同体:开发者窗也换成浅色地板玻璃底(与桌宠/其他面板一致) */
+:root{--bg:#eef2f5;--card:rgba(255,255,255,0.62);--hairline:rgba(34,51,63,0.12);
+  --edge-hi:rgba(255,255,255,0.9);--ink:#22333f;--ink-hi:#142430;--muted:#5b6d7c;--muted-2:#8794a0;
+  --accent:#3f8fac;--accent-soft:rgba(95,168,196,0.16);--accent-line:rgba(95,168,196,0.4);
+  --warn:#c0913f;--gem:#d05a6a;--success:#4c9e86;--field:rgba(255,255,255,0.7);}
+/* 暗色模式(跟随主设置 darkMode;主色调零色相,功能色保留) */
+html.dark{--bg:#161618;--card:rgba(34,34,36,0.72);--hairline:rgba(255,255,255,0.12);
+  --edge-hi:rgba(255,255,255,0.1);--ink:#d6d6d8;--ink-hi:#f2f2f3;--muted:#9c9ca1;--muted-2:#737378;
+  --accent:#5FA8C4;--field:rgba(255,255,255,0.08);}
+html.dark .item textarea{background:rgba(255,255,255,0.07);}
+html.dark .persona-card{background:rgba(255,255,255,0.06);}
+html.dark .pc-actions button{background:rgba(255,255,255,0.06);}
+body{font-family:-apple-system,'PingFang SC','Microsoft YaHei',sans-serif;background:var(--bg);color:var(--ink);
+  padding:22px 26px;font-size:13px;}
+h1{font-size:15px;margin-bottom:4px;color:var(--ink-hi);letter-spacing:0.02em;}
+h1::before{content:'';display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--accent);margin-right:9px;vertical-align:middle;}
+.tip{font-size:11px;color:var(--muted);margin-bottom:14px;line-height:1.7;}
+/* Tab 栏 */
+#tabs{display:flex;gap:6px;margin-bottom:16px;border-bottom:1px solid var(--hairline);padding-bottom:0;}
+.tab{padding:8px 18px;font-size:12.5px;color:var(--muted);cursor:pointer;border:none;background:none;
+  border-bottom:2px solid transparent;margin-bottom:-1px;}
+.tab.on{color:var(--ink-hi);border-bottom-color:var(--accent);font-weight:600;}
+.pane{display:none;}
+.pane.on{display:block;}
+.item{margin-bottom:16px;}
+.item .head{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:5px;}
+.item label{font-size:12px;font-weight:600;color:var(--accent);}
+.item .vars{font-size:10px;color:var(--muted-2);font-family:ui-monospace,monospace;}
+.item textarea{width:100%;background:rgba(255,255,255,0.7);color:var(--ink);border:1px solid var(--hairline);
+  border-radius:9px;padding:9px 11px;font-size:12px;font-family:inherit;line-height:1.6;
+  resize:vertical;outline:none;}
+.item textarea:focus{border-color:var(--accent-line);color:var(--ink-hi);}
+.item textarea.modified{border-color:var(--warn);}
+.item .reset{font-size:10px;color:var(--muted-2);cursor:pointer;border:none;background:none;padding:0;}
+.item .reset:hover{color:var(--gem);}
+#bar{position:sticky;bottom:0;background:var(--bg);padding:12px 0;display:flex;gap:10px;align-items:center;
+  border-top:1px solid var(--hairline);}
+#save{padding:9px 26px;border-radius:11px;border:1px solid var(--accent-line);font-size:13px;font-weight:600;
+  background:var(--accent-soft);color:var(--ink-hi);cursor:pointer;}
+#save:hover{background:rgba(95,168,196,0.24);}
+#status{font-size:11px;color:var(--success);}
+/* 形象 tab:隐藏入口(tab 栏右侧小圆点，1.5s 内连点 5 下展开) */
+#egg-dot{width:8px;height:8px;border-radius:50%;background:var(--hairline);margin-left:auto;
+  align-self:center;cursor:pointer;flex:none;transition:background .2s;}
+#egg-dot:hover{background:var(--accent-line);}
+#tab-persona{display:none;}
+/* 形象卡片 */
+.persona-card{background:rgba(255,255,255,0.7);border:1px solid var(--hairline);border-radius:12px;
+  padding:12px 14px;margin-bottom:10px;cursor:pointer;}
+.persona-card.on{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent-line);}
+.persona-card .pc-head{display:flex;align-items:center;gap:8px;}
+.persona-card .pc-name{font-weight:600;font-size:13px;color:var(--ink-hi);}
+.persona-card .pc-meta{font-size:10.5px;color:var(--muted-2);margin-top:2px;}
+.persona-card .pc-badge{font-size:10px;color:var(--accent);border:1px solid var(--accent-line);
+  border-radius:99px;padding:1px 8px;margin-left:auto;flex:none;}
+.persona-card .pc-actions{display:flex;gap:8px;margin-top:9px;}
+.pc-actions button{font-size:11px;padding:4px 12px;border-radius:8px;border:1px solid var(--hairline);
+  background:rgba(255,255,255,0.6);color:var(--muted);cursor:pointer;}
+.pc-actions button:hover{color:var(--ink-hi);border-color:var(--accent-line);}
+.pc-actions button.danger:hover{color:var(--gem);border-color:var(--gem);}
+/* 卡片内联编辑器(人设/尺寸行):输入框与按钮跟页面同一套皮肤(--field 令牌,暗浅色都对) */
+.persona-card .perso-row input,.persona-card .perso-row textarea,.persona-card .size-row input{
+  background:var(--field);color:var(--ink);border:1px solid var(--hairline);border-radius:9px;
+  padding:7px 10px;font-size:12px;font-family:inherit;line-height:1.6;outline:none;}
+.persona-card .perso-row textarea{resize:vertical;}
+.persona-card .perso-row input:focus,.persona-card .perso-row textarea:focus,
+.persona-card .size-row input:focus{border-color:var(--accent-line);color:var(--ink-hi);}
+.persona-card .perso-row button,.persona-card .size-row button{font-size:11px;padding:4px 12px;
+  border-radius:8px;border:1px solid var(--hairline);background:rgba(255,255,255,0.6);
+  color:var(--muted);cursor:pointer;}
+html.dark .persona-card .perso-row button,html.dark .persona-card .size-row button{background:rgba(255,255,255,0.06);}
+.persona-card .perso-row button:hover,.persona-card .size-row button:hover{color:var(--ink-hi);border-color:var(--accent-line);}
+/* 动画 map 表 */
+.anim-map{width:100%;border-collapse:collapse;font-size:11px;margin-top:10px;}
+.anim-map th{text-align:left;color:var(--muted-2);font-weight:500;padding:3px 6px;border-bottom:1px solid var(--hairline);}
+.anim-map td{padding:3px 6px;border-bottom:1px solid var(--hairline);color:var(--ink);}
+.anim-map tr{cursor:pointer;}
+.anim-map tr:hover td{background:var(--accent-soft);}
+.anim-map tr.sel td{background:var(--accent-soft);color:var(--ink-hi);}
+.tag-ok{color:var(--success);}
+.tag-miss{color:var(--muted-2);}
+/* 大预览:逐帧播放 */
+#persona-preview{margin-top:12px;background:rgba(255,255,255,0.55);border:1px solid var(--hairline);
+  border-radius:12px;padding:10px;display:none;}
+#persona-preview .pv-title{font-size:11px;color:var(--muted);margin-bottom:6px;}
+#pv-canvas{display:block;margin:0 auto;max-height:320px;max-width:100%;
+  background:
+   linear-gradient(45deg,rgba(34,51,63,0.06) 25%,transparent 25%,transparent 75%,rgba(34,51,63,0.06) 75%),
+   linear-gradient(45deg,rgba(34,51,63,0.06) 25%,transparent 25%,transparent 75%,rgba(34,51,63,0.06) 75%);
+  background-size:16px 16px;background-position:0 0,8px 8px;border-radius:8px;}
+#import-btn{font-size:12px;padding:7px 18px;border-radius:10px;border:1px dashed var(--accent-line);
+  background:none;color:var(--accent);cursor:pointer;width:100%;margin-bottom:12px;}
+#import-btn:hover{background:var(--accent-soft);}
+.emo-desc-in{width:100%;background:var(--field);border:1px solid var(--hairline);border-radius:7px;
+  padding:4px 8px;font-size:11px;color:var(--ink);outline:none;box-sizing:border-box;}
+.emo-desc-in:focus{border-color:var(--accent-line);}
+.emo-map-sel{width:100%;background:var(--field);border:1px solid var(--hairline);border-radius:7px;
+  padding:4px 6px;font-size:11px;color:var(--ink);outline:none;}
+/* 尺寸内联编辑器(样式必须走令牌进样式表:内联白底在黑曜模式下会顶着不变,踩过) */
+.size-row input{width:72px;padding:4px 7px;border:1px solid var(--hairline);border-radius:7px;
+  background:var(--field);color:var(--ink);outline:none;font-size:11px;}
+.size-row input:focus{border-color:var(--accent-line);}
+.size-row button{font-size:11px;padding:3px 12px;border-radius:7px;cursor:pointer;}
+.size-row button[data-a=ok]{border:1px solid var(--accent-line);background:var(--accent-soft);color:var(--ink-hi);}
+.size-row button[data-a=cancel]{border:1px solid var(--hairline);background:var(--field);color:var(--muted);}
+.live-btn{font-size:10.5px;padding:2px 9px;border-radius:7px;border:1px solid var(--accent-line);
+  background:none;color:var(--accent);cursor:pointer;white-space:nowrap;}
+.live-btn:hover{background:var(--accent-soft);}
+html.dark .emo-desc-in,html.dark .emo-map-sel{background:rgba(255,255,255,0.07);}
+/* 调试日志条/大预览:浅色底换令牌感的暗底(内联硬编码白底在暗色下是亮灰条,实测辣眼) */
+.log-item{margin-bottom:8px;background:rgba(255,255,255,0.7);border:1px solid var(--hairline);
+  border-radius:9px;padding:8px 11px;}
+html.dark .log-item{background:rgba(255,255,255,0.055);}
+html.dark #persona-preview{background:rgba(255,255,255,0.055);}
+
+</style></head><body>
+<h1>配置后台</h1>
+<div class="tip"><b>模型提示词</b> = 发给 AI 的指令;<b>桌宠台词</b> = 不经模型直接说出口的预设文案。
+黄框 = 已改动(覆盖默认)，清空并保存即恢复默认。花括号 {xxx} 是运行时变量，别删。
+多行预设一行一条随机取。保存立即生效，无需重启。</div>
+
+<div id="tabs">
+  <button class="tab on" data-pane="pane-model">模型提示词</button>
+  <button class="tab" data-pane="pane-lines">桌宠台词</button>
+  <button class="tab" data-pane="pane-log">调试日志</button>
+  <button class="tab" data-pane="pane-persona" id="tab-persona">形象</button>
+  <div id="egg-dot" title=""></div>
+</div>
+
+<div class="pane on" id="pane-model"><div id="list-model"></div></div>
+<div class="pane" id="pane-lines"><div id="list-lines"></div></div>
+<div class="pane" id="pane-log">
+  <div class="tip">每次模型调用发了什么、回了什么，原文都在这;拾音自愈记录也在(kind=audio)。
+  锐评"没看清"、回复跑偏，先来这对账。</div>
+  <button id="log-refresh" style="padding:6px 16px;border-radius:10px;border:1px solid var(--hairline);background:var(--card);color:var(--muted);cursor:pointer;font-size:12px;margin-bottom:10px;">刷新日志</button>
+  <div id="loglist"></div>
+</div>
+
+<div class="pane" id="pane-persona">
+  <div class="tip">形象包 = 一个文件夹(persona.json + manifest.json + 雪碧图 webp + 可选 fx 特效)。
+  <b>idle 待机动画必传</b>，其余动画/特效都是可选:包里有的自动接管，没有的由通用小动作兜底。
+  包可在 persona.json 用 <b>emoDesc:{"情绪名":"使用场合"}</b> 声明自定义情绪(配 emo_情绪名 动画或
+  emoAliases 映射)，对话里就能触发;情绪词表与场合说明拼进系统提示词，点「动画清单」可查看。</div>
+  <button id="import-btn">＋ 导入形象包(zip 或文件夹)</button>
+  <div id="persona-list"></div>
+  <div id="persona-detail"></div>
+  <div id="persona-preview">
+    <div class="pv-title" id="pv-title"></div>
+    <canvas id="pv-canvas"></canvas>
+  </div>
+</div>
+
+<div id="bar"><button id="save">保存并应用</button><span id="status"></span></div>
+<script src="prompts_defaults.js"></script>
+<script>
+// [key, 标签， 变量提示， 分组('model'|'lines')]
+const META = [
+ ["system_rules", "回复规则+情绪标签协议(激活形象包时，情绪段由包接管，见 形象 tab)", "", "model"],
+ ["poke", "被戳时发给模型的事件", "{part}", "model"],
+ ["complete_react", "完成待办的事件", "{name}", "model"],
+ ["skip_react", "跳过待办的事件", "{name}", "model"],
+ ["todo_split", "待办 AI 拆解", "{todos}", "model"],
+ ["study_split", "自习室:大目标拆子课题", "{goal} {n} {done}", "model"],
+ ["study_solve", "自习室:检索解题(双句式,事实真实+推论跳跃)", "{task} {goal} {search}", "model"],
+ ["study_solve_net", "自习室:服务商原生联网解题(通义/Kimi 等)", "{task} {goal} {q}", "model"],
+ ["study_solve_dry", "自习室:纯大语言模型解题(没联网时)", "{task} {goal}", "model"],
+ ["study_goal_gen", "自习室:AI 自动起研究命题", "{have}", "model"],
+ ["study_verdict", "自习室:打卡卡 PK 判词", "{min} {you} {pet} {cy} {cp} {verdict}", "model"],
+ ["screen_judge", "屏摄摸鱼判定(视觉模型)", "{persona} {task} {strict}", "model"],
+ ["screen_strict_levels", "摸鱼判定标准分级(5 行=灵敏度 1~5 档)", "", "model"],
+ ["screen_desc", "锐评第一步:客观描述屏幕(视觉模型)", "", "model"],
+ ["comment_with_todo", "锐评第二步:有待办时", "{desc} {task}", "model"],
+ ["comment_no_todo", "锐评第二步:无待办时", "{desc}", "model"],
+ ["comment_direct_with_todo", "锐评·单段直答(视觉模型兼对话时):有待办,输出记:/说:两行", "{task}", "model"],
+ ["comment_direct_no_todo", "锐评·单段直答(视觉模型兼对话时):无待办,输出记:/说:两行", "", "model"],
+ ["journal_observe", "随机屏摄日记:单次观察记录(视觉模型,两段模式)", "", "model"],
+ ["journal_observe_direct", "随机屏摄日记:记+说一次出(视觉模型,单段模式)", "", "model"],
+ ["journal_comment", "随机屏摄日记:观察后开口点评(对话模型,两段模式)", "{desc}", "model"],
+ ["journal_report", "今日日报(☀按钮):观察流水+待办联动总结", "{notes} {todos}", "model"],
+ ["daily_report", "日报评语(全部待办完成时,含观察流水)", "{summary} {checks} {notes}", "model"],
+ ["weekly_report", "周报总结(含近一周观察流水)", "{digest} {notes}", "model"],
+ ["weather", "早安天气播报", "{fact}", "model"],
+ ["lyric", "听歌点评", "{title}", "model"],
+ ["line_study_focus", "自习室:埋头研究台词(一行一条，随机)", "{t}", "lines"],
+ ["line_study_busted", "自习室:摸鱼被抓包台词(一行一条，随机)", "", "lines"],
+ ["greetings", "开机问候预设(一行一条，随机)", "", "lines"],
+ ["health_lines", "整点提醒预设(一行一条，随机)", "", "lines"],
+ ["sleepy_lines", "深夜催睡台词(一行一条，随机)", "", "lines"],
+ ["line_start", "开始执行台词", "{name}", "lines"],
+ ["line_start_hint", "开始执行的小字提示", "", "lines"],
+ ["line_task_timeup", "预估超时提问", "{name}", "lines"],
+ ["line_extend", "超时无响应自动续 15 分钟的台词", "", "lines"],
+ ["line_break", "番茄钟休息提醒", "", "lines"],
+ ["line_complete", "完成待办兜底台词(没配模型时)", "", "lines"],
+ ["line_skip", "跳过待办兜底台词", "", "lines"],
+ ["line_poke_enough", "被戳烦台词", "", "lines"],
+ ["line_wake", "被弄醒台词", "", "lines"],
+ ["fb_catch", "屏检兜底:抓摸鱼(一行一条，随机)", "", "lines"],
+ ["fb_work", "屏检兜底:在干活(一行一条，随机)", "", "lines"],
+ ["fb_unsure", "屏检兜底:拿不准(一行一条，随机)", "", "lines"],
+];
+// Tab 切换不依赖 Electron 桥:桥挂了页签也能点
+document.querySelectorAll('.tab').forEach((b) => {
+  b.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach((x) => x.classList.remove('on'));
+    document.querySelectorAll('.pane').forEach((x) => x.classList.remove('on'));
+    b.classList.add('on');
+    document.getElementById(b.dataset.pane).classList.add('on');
+  });
+});
+/* ---- 形象 tab 可见性:没有任何形象包时，只能靠右侧小圆点 1.5s 连点 5 下临时展开;
+ * 一旦导入过包，tab 永久显示(存 localStorage，重启后台也在) ---- */
+const PersonaTab = {
+  KEY: 'mantou_persona_tab',
+  unlock(permanent) {
+    // 必须给具体值:置空串会回落到样式表的 display:none，等于永远解不开(踩过坑)
+    document.getElementById('tab-persona').style.display = 'block';
+    if (permanent) localStorage.setItem(this.KEY, '1');
+  },
+  init() {
+    if (localStorage.getItem(this.KEY)) this.unlock(false);
+    const dot = document.getElementById('egg-dot');
+    let clicks = [];
+    dot.addEventListener('click', () => {
+      const now = Date.now();
+      clicks = clicks.filter((t) => now - t < 1500);
+      clicks.push(now);
+      if (clicks.length >= 5) {
+        clicks = [];
+        this.unlock(false); // 手动摇开只是本次会话;导入成功才永久
+        document.getElementById('tab-persona').click();
+      }
+    });
+  },
+};
+PersonaTab.init();
+
+/* ---- 形象管理 ---- */
+const PersonaUI = {
+  list: [], activeId: null, sel: null, // sel = { personaId, anim }
+  async refresh() {
+    this.list = await window.pet.personaList();
+    const cfg = (await window.pet.getConfig()) || {};
+    this.activeId = cfg.activePersona || null;
+    // 有包就永久点亮 tab(重启后台/重传包都在);没包且被删光了回隐藏态
+    if (this.list.length) PersonaTab.unlock(true);
+    this.render();
+  },
+  async render() {
+    const box = document.getElementById('persona-list');
+    box.innerHTML = '';
+    // 包被删光:收回永久点亮(回到"连点 5 下"的隐藏态);refresh 里有包会再点亮
+    if (!this.list.length) {
+      localStorage.removeItem(PersonaTab.KEY);
+      document.getElementById('tab-persona').style.display = 'none';
+    }
+    // 馒头(默认形象)卡片:始终在最上面
+    box.appendChild(this.card({
+      id: null, name: '馒馒(默认)', builtin: true,
+      meta: '码绘毛玻璃馒头 · 零素材 · 全情绪+全彩蛋+寒潮特效',
+    }));
+    for (const p of this.list) {
+      box.appendChild(this.card({
+        id: p.id, name: p.name,
+        meta: `${p.animCount} 个动画`,
+        anims: p.anims,
+      }));
+    }
+  },
+  card({ id, name, meta, builtin, anims }) {
+    const div = document.createElement('div');
+    div.className = 'persona-card' + ((this.activeId || null) === id ? ' on' : '');
+    const active = (this.activeId || null) === id;
+    div.innerHTML = `<div class="pc-head"><span class="pc-name">${name}</span>
+      ${active ? '<span class="pc-badge">生效中</span>' : ''}</div>
+      <div class="pc-meta">${meta}</div>
+      <div class="pc-actions">
+        ${active
+          ? (id ? '<button data-act="deactivate">切回馒馒</button>' : '')
+          : `<button data-act="activate">${builtin ? '启用' : '启用这个形象'}</button>`}
+        <button data-act="perso">人设</button>
+        ${!builtin ? '<button data-act="anims">动画清单</button><button data-act="size">尺寸</button><button data-act="delete" class="danger">删除</button>' : ''}
+      </div>`;
+    div.querySelectorAll('button').forEach((b) => b.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const act = b.dataset.act;
+      if (act === 'activate') { await window.pet.personaActivate(id); await this.refresh(); }
+      else if (act === 'deactivate') { await window.pet.personaActivate(null); await this.refresh(); }
+      else if (act === 'delete') {
+        if (confirm(`删除形象「${name}」?包文件会从本地移除。`)) {
+          await window.pet.personaDelete(id); await this.refresh();
+          document.getElementById('persona-detail').innerHTML = '';
+          this.stopPreview();
+        }
+      }
+      else if (act === 'perso') {
+        // 人设+名字按形象绑定(功能4):此编辑框与桌宠设置面板「基础」里的
+        // 是同一份(config.personaBindings[id]),任一处改完两边同步
+        const old = div.querySelector('.perso-row');
+        if (old) { old.remove(); return; } // 再点一次=收起
+        const key = id || 'mantou';
+        const cfgNow = (await window.pet.getConfig()) || {};
+        const b = (cfgNow.personaBindings || {})[key]
+          || (key === 'mantou' ? { petName: cfgNow.petName, customPersonality: cfgNow.customPersonality } : {});
+        const row = document.createElement('div');
+        row.className = 'perso-row';
+        row.style.cssText = 'margin-top:9px;font-size:11px;color:var(--muted);display:flex;flex-direction:column;gap:6px;';
+        row.innerHTML = `<div style="display:flex;gap:8px;align-items:center;">名字
+            <input style="flex:0 0 140px;" placeholder="${builtin ? '馒馒' : name}"></div>
+          <textarea rows="4" style="width:100%;box-sizing:border-box;" placeholder="人设(身份+性格一段写完;{petName} 代入名字;留空=默认底稿)"></textarea>
+          <div class="tip" style="margin:0;">与桌宠设置面板「基础」里的名字/人设是同一份,按形象各存一套,切形象自动跟着换。</div>
+          <div style="display:flex;gap:8px;"><button data-a="ok">保存</button><button data-a="cancel">取消</button></div>`;
+        // 值走赋值不走 innerHTML 拼接:人设文本里带引号/尖括号不会炸卡片
+        row.querySelector('input').value = b.petName || '';
+        row.querySelector('textarea').value = b.customPersonality || '';
+        row.addEventListener('click', (ev) => ev.stopPropagation());
+        row.querySelector('[data-a=cancel]').addEventListener('click', () => row.remove());
+        row.querySelector('[data-a=ok]').addEventListener('click', async () => {
+          // 铁律:以磁盘最新配置为底稿,只并入自己的绑定格
+          const fresh = (await window.pet.getConfig()) || {};
+          const petName = row.querySelector('input').value.trim();
+          const customPersonality = row.querySelector('textarea').value.trim();
+          fresh.personaBindings = { ...(fresh.personaBindings || {}), [key]: { petName, customPersonality } };
+          if (key === 'mantou') { // 旧全局键保持镜像(兼容旧读取路径)
+            fresh.petName = petName || '馒馒';
+            fresh.customPersonality = customPersonality;
+          }
+          await window.pet.setConfig(fresh);
+          window.pet.promptsSaved(); // 桌宠端热加载,设置面板开着也会同步刷新
+          row.remove();
+        });
+        div.appendChild(row);
+      }
+      else if (act === 'anims') this.showAnims(id, name);
+      else if (act === 'size') {
+        // 内联编辑器(Electron 不支持 window.prompt，弹窗方案会静默失败，踩过坑)
+        const old = div.querySelector('.size-row');
+        if (old) { old.remove(); return; } // 再点一次=收起
+        const data = await window.pet.personaManifest(id);
+        const cur = data?.persona?.displayHeight || 360;
+        const row = document.createElement('div');
+        row.className = 'size-row';
+        row.style.cssText = 'display:flex;gap:8px;align-items:center;margin-top:9px;font-size:11px;color:var(--muted);flex-wrap:wrap;';
+        row.innerHTML = `显示高度
+          <input type="number" min="120" max="1200" value="${cur}">
+          px(默认 360，公共画布等比缩放)
+          <button data-a="ok">应用</button>
+          <button data-a="cancel">取消</button>`;
+        row.addEventListener('click', (ev) => ev.stopPropagation());
+        row.querySelector('[data-a=cancel]').addEventListener('click', () => row.remove());
+        row.querySelector('[data-a=ok]').addEventListener('click', async () => {
+          const inp = row.querySelector('input');
+          const h = parseInt(inp.value, 10);
+          if (!h || h < 120 || h > 1200) { inp.style.borderColor = 'var(--gem)'; return; }
+          // 写回包里的 persona.json;主进程会广播 persona-refresh,
+          // 桌宠端 reloadMeta+Sprites.apply 热应用(重触发 activate 没用:
+          // id 没变时渲染端只弹 toast 不重读 persona.json,踩过)
+          await window.pet.personaSetSize(id, h);
+          await this.refresh();
+        });
+        div.appendChild(row);
+        row.querySelector('input').focus();
+      }
+    }));
+    return div;
+  },
+  async showAnims(id, name) {
+    const data = await window.pet.personaManifest(id);
+    if (!data) return;
+    const man = data.manifest;
+    const det = document.getElementById('persona-detail');
+    // 槽位分组展示:情绪/触摸/彩蛋/睡眠/其他
+    const GROUPS = [
+      ['情绪(聊天 [emo:] 触发)', Object.keys(man).filter((k) => k.startsWith('emo_'))],
+      ['触摸(戳它时播)', Object.keys(man).filter((k) => k.startsWith('touch_'))],
+      ['彩蛋(随机/彩蛋触发)', Object.keys(man).filter((k) => k.startsWith('egg_'))],
+      ['睡眠', Object.keys(man).filter((k) => k.startsWith('sleep'))],
+      ['其他', Object.keys(man).filter((k) => !/^(emo_|touch_|egg_|sleep)/.test(k))],
+    ].filter(([, arr]) => arr.length);
+    let html = `<div style="font-size:12px;font-weight:600;color:var(--ink-hi);margin:14px 0 4px;">
+      「${name}」动画清单 · 点行=后台大预览，▶=在桌宠上真机播放</div><table class="anim-map">
+      <tr><th>槽位</th><th>帧数</th><th>fps</th><th>单帧尺寸</th><th></th></tr>`;
+    // 彩蛋可禁用(persona.json disabledEggs):禁的不进待机彩蛋池、催睡不点名;
+    // 功能路由槽位(emo/touch/sleep/dance…)禁了动画就播不出来,不给按钮
+    const offEggs = data.persona.disabledEggs || [];
+    for (const [g, arr] of GROUPS) {
+      html += `<tr><td colspan="5" style="color:var(--accent);font-weight:600;padding-top:8px;">${g}</td></tr>`;
+      for (const k of arr) {
+        const m = man[k];
+        const off = offEggs.includes(k);
+        html += `<tr data-anim="${k}" data-pid="${id}" ${off ? 'style="opacity:0.45;"' : ''}>
+          <td>${k}${k === 'idle' ? ' <span class="tag-ok">●必传</span>' : ''}${off ? ' <span class="tag-miss">已禁用</span>' : ''}</td>
+          <td>${m.frames}</td><td>${(+m.fps).toFixed(1)}</td><td>${m.fw}×${m.fh}</td>
+          <td><button class="live-btn" data-live="${k}" title="在桌宠上播放">▶ 桌宠</button>${
+            k.startsWith('egg_') ? `<button class="live-btn" data-eggtoggle="${k}" title="禁用的彩蛋不进随机彩蛋池" style="margin-left:6px;">${off ? '启用' : '禁用'}</button>` : ''
+          }</td></tr>`;
+      }
+    }
+    html += '</table>';
+    // 特效清单
+    const fx = data.persona.fx || [];
+    html += `<div style="font-size:11px;color:var(--muted);margin-top:8px;">全屏特效:` +
+      (fx.length ? fx.map((f) => `<span class="tag-ok">[fx:${f}] ✓</span>`).join(' ')
+                 : '<span class="tag-miss">无(由码绘寒潮兜底)</span>') + '</div>';
+    // 情绪协议:标准情绪 ∪ 包自定义(persona.json emoDesc);这段会拼进系统提示词
+    // (与 app 的 capabilityAddendum 同一套规则，此处只读展示)
+    const STD_EMO = {
+      happy: '被夸/顺心/愉悦', surprise: '被吓到/意外', angry: '不满/被冒犯/用户摸鱼被抓',
+      sad: '遗憾/共情低落/失望', speechless: '无奈/轻微吐槽', gloomy: '低气压/阴阳怪气',
+      blackline: '尴尬到极点/无语住',
+    };
+    const packDesc = data.persona.emoDesc || {};
+    const aliases = data.persona.emoAliases || {};
+    // 只列包能真演出来的情绪(有 emo_ 同名动画或别名映射到包内动画)——
+    // 包没有的表情不该有协议槽位(用户拍板),词表侧 capabilityAddendum 同规则
+    const canPerform = (e) => !!(man['emo_' + e] || (aliases[e] && man[aliases[e]]));
+    const emoNames = [...new Set([...Object.keys(STD_EMO), ...Object.keys(packDesc)])].filter(canPerform);
+    // 情绪协议可编辑:场合=emoDesc,表现=emoAliases(下拉重映射),保存写回 persona.json
+    const animOpts = (sel) => ['<option value="">自动(emo_同名动画或通用兜底)</option>']
+      .concat(Object.keys(man).map((k) => `<option value="${k}" ${sel === k ? 'selected' : ''}>${k}</option>`)).join('');
+    html += `<div style="font-size:12px;font-weight:600;color:var(--ink-hi);margin:14px 0 4px;">
+      情绪协议(拼进系统提示词的词表) · 场合与映射可编辑，改完点下方保存</div>
+      <table class="anim-map"><tr><th style="width:110px;">[emo:标签]</th><th>使用场合(emoDesc)</th><th style="width:190px;">触发的动画(emoAliases)</th></tr>`;
+    for (const e of emoNames) {
+      html += `<tr><td>[emo:${e}]${STD_EMO[e] ? '' : ' <span class="tag-ok">自定义</span>'}</td>
+        <td><input class="emo-desc-in" data-e="${e}" value="${(packDesc[e] || '').replace(/"/g, '&quot;')}"
+             placeholder="${STD_EMO[e] ? '默认:' + STD_EMO[e] : '描述该情绪的使用场合'}"></td>
+        <td><select class="emo-map-sel" data-e="${e}">${animOpts(aliases[e] || '')}</select></td></tr>`;
+    }
+    html += `</table>
+      <div style="font-size:10.5px;color:var(--muted-2);margin-top:6px;line-height:1.7;">
+      场合留空=用内置默认(标准情绪)/从词表移除(自定义情绪);映射选「自动」=播 emo_同名动画。
+      包里没有对应动画的情绪不在此列(也不会进词表)——要启用它,给包补 emo_动画或在 persona.json 的 emoAliases 里映射到既有动画。</div>
+      <button id="emo-save" style="margin-top:8px;padding:7px 20px;border-radius:10px;border:1px solid var(--accent-line);
+        background:var(--accent-soft);color:var(--ink-hi);font-size:12px;cursor:pointer;">保存情绪协议(写回包)</button>
+      <span id="emo-save-r" style="font-size:11px;color:var(--success);margin-left:8px;"></span>`;
+    det.innerHTML = html;
+    det.scrollIntoView({ behavior: 'smooth', block: 'start' }); // 清单在列表下方，不滚过去用户以为没反应
+    det.querySelectorAll('tr[data-anim]').forEach((tr) =>
+      tr.addEventListener('click', () => {
+        det.querySelectorAll('tr').forEach((x) => x.classList.remove('sel'));
+        tr.classList.add('sel');
+        this.playPreview(tr.dataset.pid, tr.dataset.anim, man[tr.dataset.anim]);
+      }));
+    det.querySelectorAll('.live-btn[data-live]').forEach((b) =>
+      b.addEventListener('click', (ev) => {
+        ev.stopPropagation(); // 别触发行点击的大预览
+        window.pet.personaPreviewAnim?.(b.dataset.live);
+      }));
+    // 彩蛋禁用/启用:写回包 persona.json(主进程广播 persona-refresh 热应用),重绘清单
+    det.querySelectorAll('[data-eggtoggle]').forEach((b) =>
+      b.addEventListener('click', async (ev) => {
+        ev.stopPropagation();
+        const k = b.dataset.eggtoggle;
+        const list = offEggs.includes(k) ? offEggs.filter((x) => x !== k) : [...offEggs, k];
+        await window.pet.personaSetMeta?.(id, { disabledEggs: list });
+        this.showAnims(id, name);
+      }));
+    document.getElementById('emo-save').addEventListener('click', async () => {
+      const emoDesc = {}, emoAliases = {};
+      det.querySelectorAll('.emo-desc-in').forEach((i) => { if (i.value.trim()) emoDesc[i.dataset.e] = i.value.trim(); });
+      det.querySelectorAll('.emo-map-sel').forEach((s) => { if (s.value) emoAliases[s.dataset.e] = s.value; });
+      const ok = await window.pet.personaSetMeta?.(id, { emoDesc, emoAliases });
+      const r = document.getElementById('emo-save-r');
+      r.textContent = ok ? '✓ 已保存并热应用到桌宠' : '✗ 保存失败';
+      r.style.color = ok ? 'var(--success)' : 'var(--gem)';
+    });
+  },
+  _pv: { timer: null, img: null },
+  stopPreview() {
+    clearInterval(this._pv.timer);
+    this._pv = { timer: null, img: null };
+    document.getElementById('persona-preview').style.display = 'none';
+  },
+  async playPreview(pid, anim, m) {
+    this.stopPreview();
+    const url = await window.pet.personaFile(pid, anim + '.webp');
+    if (!url) return;
+    const img = new Image();
+    img.src = url;
+    await img.decode().catch(() => {});
+    if (!img.width) return;
+    const cv = document.getElementById('pv-canvas');
+    cv.width = m.canvasW || m.fw; cv.height = m.canvasH || m.fh;
+    // 预览限高 320px:canvas 内部分辨率不变，CSS 缩放
+    const scale = Math.min(1, 320 / cv.height);
+    cv.style.width = cv.width * scale + 'px';
+    const ctx = cv.getContext('2d');
+    document.getElementById('pv-title').textContent =
+      `${anim} · ${m.frames} 帧 @ ${(+m.fps).toFixed(1)}fps(逐帧播放)`;
+    document.getElementById('persona-preview').style.display = '';
+    let f = 0;
+    this._pv.img = img;
+    this._pv.timer = setInterval(() => {
+      const col = f % m.cols, row = Math.floor(f / m.cols);
+      ctx.clearRect(0, 0, cv.width, cv.height);
+      ctx.drawImage(img, col * m.fw, row * m.fh, m.fw, m.fh, m.dx || 0, m.dy || 0, m.fw, m.fh);
+      f = (f + 1) % m.frames;
+    }, 1000 / m.fps);
+  },
+};
+document.getElementById('import-btn').addEventListener('click', async () => {
+  const btn = document.getElementById('import-btn');
+  btn.textContent = '导入中…';
+  const r = await window.pet.personaImport();
+  btn.textContent = '＋ 导入形象包(zip 或文件夹)';
+  if (r.ok) {
+    PersonaTab.unlock(true); // 有了第一个包，形象 tab 永久点亮
+    await PersonaUI.refresh(); PersonaUI.showAnims(r.id, r.name);
+  }
+  else if (r.err !== 'canceled') alert('导入失败:' + r.err);
+});
+PersonaUI.refresh();
+
+const DEFAULTS = DEFAULT_PROMPTS; // 来自 prompts_defaults.js
+let cfg = null;
+(async () => {
+  cfg = (await window.pet.getConfig()) || {};
+  cfg.prompts = cfg.prompts || {};
+  document.documentElement.classList.toggle('dark', !!cfg.darkMode); // 暗色跟随主设置
+  for (const [key, label, vars, group] of META) {
+    const cur = cfg.prompts[key] || '';
+    const div = document.createElement('div');
+    div.className = 'item';
+    div.innerHTML = `<div class="head"><label>${label}</label>
+      <span class="vars">${vars ? '变量: ' + vars : ''}
+      <button class="reset" data-k="${key}">恢复默认</button></span></div>
+      <textarea data-k="${key}" rows="${Math.min(12, Math.max(2, (cur || DEFAULTS[key] || '').split('\n').length + 1))}"
+        placeholder="(默认)">${cur || DEFAULTS[key] || ''}</textarea>`;
+    document.getElementById(group === 'lines' ? 'list-lines' : 'list-model').appendChild(div);
+    const ta = div.querySelector('textarea');
+    if (cur) ta.classList.add('modified');
+    ta.addEventListener('input', () => ta.classList.toggle('modified', ta.value.trim() !== (DEFAULTS[key] || '').trim()));
+    div.querySelector('.reset').addEventListener('click', () => {
+      ta.value = DEFAULTS[key] || '';
+      ta.classList.remove('modified');
+    });
+  }
+  async function renderLog() {
+    const log = (await window.pet.getStore('llmlog')) || [];
+    const box = document.getElementById('loglist');
+    box.innerHTML = log.length ? '' : '<div class="tip">还没有调用记录</div>';
+    [...log].reverse().forEach((e) => {
+      const d = new Date(e.t);
+      const det = document.createElement('details');
+      det.className = 'log-item';
+      const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;');
+      det.innerHTML = `<summary style="cursor:pointer;font-size:12px;">
+          <b style="color:${e.response.startsWith('ERROR') || e.response.includes('API ERROR') ? 'var(--gem)' : 'var(--accent)'}">[${e.kind}]</b>
+          ${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')}
+          <span style="color:var(--muted-2)">${esc(e.request).slice(0, 60)}…</span></summary>
+        <div style="font-size:11px;line-height:1.7;margin-top:8px;">
+          <div style="color:var(--muted-2);">▶ 请求</div><pre style="white-space:pre-wrap;color:var(--ink);">${esc(e.request)}</pre>
+          <div style="color:var(--muted-2);">◀ 响应</div><pre style="white-space:pre-wrap;color:var(--success);">${esc(e.response)}</pre>
+        </div>`;
+      box.appendChild(det);
+    });
+  }
+  renderLog();
+  document.getElementById('log-refresh').addEventListener('click', renderLog);
+
+  document.getElementById('save').addEventListener('click', async () => {
+    // 必须以磁盘最新配置为底稿，只并入提示词改动:后台开着期间形象可能已切换，
+    // 用页面加载时的旧快照整体回写会把 activePersona 等字段抹掉(踩过坑:
+    // 启用某个角色包→点保存→重启回馒头，就是这里干的)
+    const fresh = (await window.pet.getConfig()) || {};
+    fresh.prompts = fresh.prompts || {};
+    document.querySelectorAll('textarea[data-k]').forEach((ta) => {
+      const k = ta.dataset.k;
+      const v = ta.value.trim();
+      if (!v || v === (DEFAULTS[k] || '').trim()) delete fresh.prompts[k];
+      else fresh.prompts[k] = ta.value;
+    });
+    await window.pet.setConfig(fresh);
+    cfg = fresh; // 本地快照跟上，连点两次保存也不回退
+    window.pet.promptsSaved();
+    document.getElementById('status').textContent = '✓ 已保存并热应用到桌宠';
+    setTimeout(() => (document.getElementById('status').textContent = ''), 3000);
+  });
+})();
+</script></body></html>

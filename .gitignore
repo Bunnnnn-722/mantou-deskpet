@@ -1,0 +1,11 @@
+.DS_Store
+node_modules/
+*.log
+dist/
+out/
+# 本地配置/密钥类,永不入库
+config.json
+
+# 私有对接文档与角色素材,永不入公开仓库
+personas/
+*.zip

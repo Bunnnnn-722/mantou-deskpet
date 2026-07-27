@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>馒头桌宠</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="stage">
+
+  <div id="pet-wrapper" class="interactive">
+    <div id="bubble"></div>
+    <div id="todo-banner"></div>
+
+    <div id="hover-btns">
+      <!-- 图标体系:白色细线 1.5px 圆头，20px 网格(与 UI精修_雪夜.html 同源) -->
+      <button class="hbtn" data-panel="todo" data-tip="待办 · 报告" aria-label="待办与报告">
+        <svg viewBox="0 0 20 20"><rect x="4.5" y="4" width="11" height="13" rx="2"/><path d="M7.6 4v-.5a1.4 1.4 0 0 1 1.4-1.4h2a1.4 1.4 0 0 1 1.4 1.4V4"/><path d="M7.5 8.7h5M7.5 11.7h5M7.5 14.7h3"/></svg>
+      </button>
+      <button class="hbtn" data-panel="chat" data-tip="聊天" aria-label="聊天">
+        <svg viewBox="0 0 20 20"><path d="M10 3.7c3.6 0 6.5 2.3 6.5 5.2s-2.9 5.2-6.5 5.2c-.7 0-1.4-.08-2-.25L4.6 15.2l.9-2.7c-1.3-.9-2-2.2-2-3.6 0-2.9 2.9-5.2 6.5-5.2z"/></svg>
+      </button>
+      <button class="hbtn" id="btn-comment" data-tip="让它锐评你的屏幕" aria-label="锐评当前屏幕">
+        <svg viewBox="0 0 20 20"><path d="M2.5 10s2.8-5 7.5-5 7.5 5 7.5 5-2.8 5-7.5 5-7.5-5-7.5-5z"/><circle cx="10" cy="10" r="2.2"/></svg>
+      </button>
+      <!-- F2 精简版:扣子客户端在跑才显示(state-ui 轮询检测)，点击直接拉起扣子窗口 -->
+      <button class="hbtn" id="btn-coze" data-tip="打开扣子客户端" aria-label="打开扣子" style="display:none">
+        <svg viewBox="0 0 20 20"><path d="M3.5 10 16.5 4l-3.6 12-3.4-4.6zM9.5 11.4 16.5 4"/></svg>
+      </button>
+      <button class="hbtn" data-panel="settings" data-tip="设置" aria-label="设置">
+        <svg viewBox="0 0 20 20"><path d="M3.5 6h13M3.5 10h13M3.5 14h13"/><circle cx="8" cy="6" r="1.7" fill="#10151d"/><circle cx="13" cy="10" r="1.7" fill="#10151d"/><circle cx="6.5" cy="14" r="1.7" fill="#10151d"/></svg>
+      </button>
+    </div>
+
+    <!-- 馒头本体:毛玻璃 + 程序化动画，零素材(开源默认皮肤)
+         码绘本体初始隐藏:配了角色包时不能先闪馒头再切包，由 Sprites.apply 决定亮哪个 -->
+    <div id="pet">
+      <!-- 角色包形象:雪碧图画布(激活包时隐藏下方码绘馒头，只显示这个) -->
+      <canvas id="pet-sprite" width="472" height="630" style="display:none"></canvas>
+      <div id="pet-body" style="display:none">
+        <div id="bun-bob">
+          <div id="glass"></div>
+          <svg id="pet-svg" viewBox="0 0 112 91" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <!-- 边缘光:左上/右下各一轮亮(底衬淡圈 + 模糊光晕 + 锐利亮线) -->
+            <path id="bun-outline" class="edge" d="M111.621 55.1379C111.621 85.5898 86.6335 91 55.8103 91C24.9871 91 0 85.5898 0 55.1379C0 24.6861 24.9871 0 55.8103 0C86.6335 0 111.621 24.6861 111.621 55.1379Z"
+                  stroke="rgba(255,255,255,0.14)" stroke-width="1" fill="none"/>
+            <path class="edge" d="M111.621 55.1379C111.621 85.5898 86.6335 91 55.8103 91C24.9871 91 0 85.5898 0 55.1379C0 24.6861 24.9871 0 55.8103 0C86.6335 0 111.621 24.6861 111.621 55.1379Z"
+                  stroke="url(#edgeGrad)" stroke-width="2" fill="none" filter="url(#edgeBlur)" opacity="0.8"/>
+            <path class="edge" d="M111.621 55.1379C111.621 85.5898 86.6335 91 55.8103 91C24.9871 91 0 85.5898 0 55.1379C0 24.6861 24.9871 0 55.8103 0C86.6335 0 111.621 24.6861 111.621 55.1379Z"
+                  stroke="url(#edgeGrad)" stroke-width="1" fill="none"/>
+            <g class="eye-n" id="eyeL"><ellipse cx="33.4" cy="38.8" rx="8.3" ry="16.8" fill="white"/></g>
+            <g class="eye-n" id="eyeR"><ellipse cx="58.9" cy="38.8" rx="8.3" ry="16.8" fill="white"/></g>
+            <g class="eye-a"><rect x="25.1" y="36.3" width="16.6" height="5" rx="2.5" fill="white"/></g>
+            <g class="eye-a"><rect x="50.6" y="36.3" width="16.6" height="5" rx="2.5" fill="white"/></g>
+            <defs>
+              <linearGradient id="edgeGrad" x1="10" y1="5" x2="102" y2="88" gradientUnits="userSpaceOnUse">
+                <stop offset="0" stop-color="white" stop-opacity="0.95"/>
+                <stop offset="0.32" stop-color="white" stop-opacity="0.08"/>
+                <stop offset="0.68" stop-color="white" stop-opacity="0.08"/>
+                <stop offset="1" stop-color="white" stop-opacity="0.40"/>
+              </linearGradient>
+              <filter id="edgeBlur" x="-20%" y="-20%" width="140%" height="140%">
+                <feGaussianBlur stdDeviation="1.2"/>
+              </filter>
+            </defs>
+          </svg>
+        </div>
+      </div>
+      <!-- 自习室演出道具层(07-26 演出池):.ps=0.75 缩放定位壳,坐标由沙盒换算
+           小猫图形:Boxicons cat-body-filled(MIT,https://boxicons.com) -->
+      <div id="study-props">
+        <div class="ps" style="left:80px;top:-66px"><svg class="prop think-q" viewBox="0 0 20 30" xmlns="http://www.w3.org/2000/svg">
+          <path d="M5.5 9 C5.5 4.4 7.8 2 10.6 2 C13.6 2 15.5 4.3 15.5 7.2 C15.5 10.2 13.2 11.2 11.7 12.7 C10.7 13.7 10.2 14.7 10.2 16.8" stroke="white" stroke-width="3" stroke-linecap="round" fill="none"/>
+          <circle cx="10.2" cy="23.5" r="2.7" fill="white"/>
+        </svg></div>
+        <div class="ps" style="left:0;top:33px"><svg class="prop cat" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+          <path fill="white" d="m22 2l-2 2h-6l-2-2v7c0 2.76 2.24 5 5 5s5-2.24 5-5V4h-.01V2Zm-7 7c-.55 0-1-.45-1-1s.45-1 1-1s1 .45 1 1s-.45 1-1 1m4 0c-.55 0-1-.45-1-1s.45-1 1-1s1 .45 1 1s-.45 1-1 1"/>
+          <path fill="white" d="M11.09 10H5.5C4.67 10 4 9.33 4 8.5S4.67 7 5.5 7C7.06 7 10 6.16 10 3V2H8v1c0 1.88-2.09 2-2.5 2C3.57 5 2 6.57 2 8.5c0 1.42.85 2.63 2.06 3.18L5 21.1a1 1 0 0 0 1 .9h3c.55 0 1-.45 1-1v-3h4v3c0 .55.45 1 1 1h3c.51 0 .94-.38.99-.89l.75-6.78c-.82.43-1.76.67-2.75.67c-2.97 0-5.43-2.17-5.91-5Z"/>
+        </svg></div>
+        <div class="fish-school prop">
+          <div class="fish"><svg viewBox="0 0 22 12" xmlns="http://www.w3.org/2000/svg"><ellipse cx="9" cy="6" rx="8" ry="4" fill="#fff"/><path d="M16.5 6 L22 2 L22 10 Z" fill="#fff"/></svg></div>
+          <div class="fish"><svg viewBox="0 0 22 12" xmlns="http://www.w3.org/2000/svg"><ellipse cx="9" cy="6" rx="8" ry="4" fill="#fff"/><path d="M16.5 6 L22 2 L22 10 Z" fill="#fff"/></svg></div>
+          <div class="fish"><svg viewBox="0 0 22 12" xmlns="http://www.w3.org/2000/svg"><ellipse cx="9" cy="6" rx="8" ry="4" fill="#fff"/><path d="M16.5 6 L22 2 L22 10 Z" fill="#fff"/></svg></div>
+          <div class="fish"><svg viewBox="0 0 22 12" xmlns="http://www.w3.org/2000/svg"><ellipse cx="9" cy="6" rx="8" ry="4" fill="#fff"/><path d="M16.5 6 L22 2 L22 10 Z" fill="#fff"/></svg></div>
+          <div class="fish"><svg viewBox="0 0 22 12" xmlns="http://www.w3.org/2000/svg"><ellipse cx="9" cy="6" rx="8" ry="4" fill="#fff"/><path d="M16.5 6 L22 2 L22 10 Z" fill="#fff"/></svg></div>
+          <div class="fish"><svg viewBox="0 0 22 12" xmlns="http://www.w3.org/2000/svg"><ellipse cx="9" cy="6" rx="8" ry="4" fill="#fff"/><path d="M16.5 6 L22 2 L22 10 Z" fill="#fff"/></svg></div>
+        </div>
+        <div class="ps" style="left:79px;top:-70px"><svg class="prop busted-mark" viewBox="0 0 14 36" xmlns="http://www.w3.org/2000/svg">
+          <rect x="4" y="1" width="6" height="21" rx="3" fill="white"/><circle cx="7" cy="30" r="4.4" fill="white"/>
+        </svg></div>
+        <div class="ps" style="left:14px;top:-100px"><svg class="prop steam s1" viewBox="0 0 12 32" xmlns="http://www.w3.org/2000/svg">
+          <path d="M6 30 Q2 24 6 18 Q10 12 6 6 Q4 3 6 1" stroke="white" stroke-width="2.6" stroke-linecap="round" fill="none"/></svg></div>
+        <div class="ps" style="left:31px;top:-107px"><svg class="prop steam s2" viewBox="0 0 12 32" xmlns="http://www.w3.org/2000/svg">
+          <path d="M6 30 Q2 24 6 18 Q10 12 6 6 Q4 3 6 1" stroke="white" stroke-width="2.6" stroke-linecap="round" fill="none"/></svg></div>
+        <div class="ps" style="left:46px;top:-101px"><svg class="prop steam s3" viewBox="0 0 12 32" xmlns="http://www.w3.org/2000/svg">
+          <path d="M6 30 Q2 24 6 18 Q10 12 6 6 Q4 3 6 1" stroke="white" stroke-width="2.6" stroke-linecap="round" fill="none"/></svg></div>
+        <div class="ps" style="left:-49px;top:-4px"><div class="prop bub b1"></div></div>
+        <div class="ps" style="left:-64px;top:10px"><div class="prop bub b2"></div></div>
+        <div class="ps" style="left:129px;top:-2px"><div class="prop bub b3"></div></div>
+        <div class="ps" style="left:144px;top:14px"><div class="prop bub b4"></div></div>
+      </div>
+    </div>
+    <div id="pet-shadow" style="display:none"></div>
+    <div id="screen-check-ui"><div class="sc-ring"></div><div class="sc-bar">观察中</div></div>
+  </div>
+
+  <div class="panel interactive" id="panel-todo">
+    <div class="panel-header">
+      <div class="panel-tabs">
+        <button class="ptab active" data-tab="todo">待办</button>
+        <button class="ptab" data-tab="study">研究</button>
+        <button class="ptab" data-tab="report">记录</button>
+      </div>
+      <button class="panel-close" aria-label="关闭" data-close="todo">✕</button>
+    </div>
+    <div class="panel-body" id="todo-body"></div>
+    <div class="panel-body" id="study-body" style="display:none"></div>
+    <div class="panel-body" id="report-body" style="display:none"></div>
+  </div>
+
+  <div class="panel interactive" id="panel-chat">
+    <div class="panel-header"><h3 id="chat-title">聊聊</h3>
+      <div style="display:flex;gap:6px;align-items:center;">
+        <button class="chat-hbtn" id="chat-hist" title="历史对话"><svg viewBox="0 0 20 20"><circle cx="10" cy="10" r="7"/><path d="M10 6v4.2l2.8 1.6"/></svg></button>
+        <button class="chat-hbtn" id="chat-new" title="新对话"><svg viewBox="0 0 20 20"><path d="M10 4.5v11M4.5 10h11"/></svg></button>
+        <button class="panel-close" aria-label="关闭" data-close="chat">✕</button>
+      </div>
+    </div>
+    <div class="panel-body">
+      <div class="chat-messages" id="chat-messages"></div>
+      <div class="chat-input-row">
+        <input type="text" id="chat-input" placeholder="说点什么…" autocomplete="off">
+        <button id="chat-send" aria-label="发送"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3.5 10 16.5 4l-3.6 12-3.4-4.6zM9.5 11.4 16.5 4"/></svg></button>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel interactive" id="panel-settings">
+    <div class="panel-header"><h3>设置</h3><button class="panel-close" aria-label="关闭" data-close="settings">✕</button></div>
+    <div class="panel-body" id="settings-body"></div>
+  </div>
+
+  <!-- 全屏特效层:桌宠"施法"用，穿透点击，盖在一切之上 -->
+  <div id="fx-tint"></div>
+  <canvas id="fx-layer"></canvas>
+
+  <div id="toast"></div>
+</div>
+<!-- 模块按依赖序加载(共享全局作用域，启动逻辑在最后的 boot.js) -->
+<script src="prompts_defaults.js"></script>
+<script src="js/core.js"></script>
+<script src="js/persona.js"></script>
+<script src="js/player.js"></script>
+<script src="js/fx.js"></script>
+<script src="js/behavior.js"></script>
+<script src="js/state-ui.js"></script>
+<script src="js/chat.js"></script>
+<script src="js/todo.js"></script>
+<script src="js/study.js"></script>
+<script src="js/music.js"></script>
+<script src="js/settings.js"></script>
+<script src="js/faces.js"></script>
+<script src="js/bun.js"></script>
+<script src="js/boot.js"></script>
+</body>
+</html>
