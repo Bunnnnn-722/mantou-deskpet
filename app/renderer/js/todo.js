@@ -317,20 +317,21 @@ function renderPlanView(plan) {
                  : `<button class="po-restore" data-org="${org.replace(/"/g, '&quot;')}">↩ 恢复原始项</button>`}
     </div>`;
     idxs.forEach(([p, i]) => {
-      html += `<div class="tl-item">
-        <input class="plan-name" data-i="${i}" value="${p.name.replace(/"/g, '&quot;')}"
-          style="flex:1;background:rgba(0,0,0,0.25);border:1px solid rgba(255,255,255,0.12);border-radius:8px;padding:6px 9px;font-size:12px;color:var(--ink);outline:none;min-width:0;">
-        <input class="plan-min" data-i="${i}" type="number" min="5" max="90" value="${p.est}"
-          style="width:52px;background:rgba(0,0,0,0.25);border:1px solid rgba(255,255,255,0.12);border-radius:8px;padding:6px 4px;font-size:12px;color:var(--ink);outline:none;text-align:center;">
-        <span style="font-size:11px;color:var(--muted-2);">分</span>
+      // 不能复用 .tl-item:卡片重构后它是纵向布局,拆解行要横排(名字|时长|分|删)
+      html += `<div class="plan-row">
+        <input class="plan-name" data-i="${i}" value="${p.name.replace(/"/g, '&quot;')}">
+        <input class="plan-min" data-i="${i}" type="number" min="5" max="90" value="${p.est}">
+        <span class="plan-unit">分</span>
         <button class="tl-del" data-del="${i}" title="删除这一步">✕</button>
       </div>`;
     });
   });
   body.innerHTML = html +
     `<button class="start-btn" id="plan-confirm">确认，开始执行</button>
-     <button class="report-btn" id="plan-redo">重新拆解</button>
-     <button class="report-btn" id="plan-back">返回</button>`;
+     <div class="plan-acts">
+       <button class="report-btn" id="plan-redo">重新拆解</button>
+       <button class="report-btn" id="plan-back">返回</button>
+     </div>`;
   // 输入实时写回 S.plan:删项/恢复会重渲染，不能丢手改内容
   body.querySelectorAll('.plan-name').forEach((el) =>
     el.addEventListener('input', () => { S.plan[+el.dataset.i].name = el.value; }));
