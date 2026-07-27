@@ -13,7 +13,8 @@ const Music = {
     // 重拾入口也走这里:先清旧循环/轮询，避免双循环
     cancelAnimationFrame(this.raf);
     clearInterval(this.appPoll);
-    // 首选系统声音回环(听"播出来的声音"，免疫键盘/环境噪音);失败退回麦克风
+    // 只用系统声音回环(听"播出来的声音"，免疫键盘/环境噪音)。麦克风兜底已砍:
+    // 播放器开着但暂停时,它会转头拉环境噪音当节拍摇起来(真机实锤),不符合预期
     try {
       this.stream = await navigator.mediaDevices.getDisplayMedia({ audio: true, video: true });
       // 视频轨只禁用不停止:回环音频和视频挂在同一条 ScreenCaptureKit 会话上，
@@ -21,12 +22,7 @@ const Music = {
       this.stream.getVideoTracks().forEach((t) => { t.enabled = false; });
       if (!this.stream.getAudioTracks().length) throw new Error('无音轨');
       this.srcName = '系统声音';
-    } catch {
-      try {
-        this.stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        this.srcName = '麦克风';
-      } catch { this.status = '音频源不可用(权限被拒)'; showToast('拿不到系统声音也拿不到麦克风，听歌模式无法开启'); return false; }
-    }
+    } catch { this.status = '拿不到系统声音(要屏幕录制权限)'; showToast('拿不到系统声音(需要屏幕录制权限)，听歌模式无法开启'); return false; }
     if (!quiet) showToast(`听歌点头:使用${this.srcName}`);
     await audioCtx.resume(); // AudioContext 可能处于挂起态，不唤醒的话分析器全是 0
     // 只有检测到音乐播放器进程才分析节拍，防止语音输入/说话误触发跳舞
@@ -68,21 +64,17 @@ const Music = {
       while (this.energy.length && now - this.energy[0].t > 1200) this.energy.shift();
       const avg = this.energy.reduce((s, x) => s + x.e, 0) / (this.energy.length || 1);
       this.lastAvg = avg; // 睡眠×音乐分级要看"当下响不响"(重低音判据)
-      // 门限按音源分:回环流里只有播放器输出、没有环境音，"有声即音乐";
-      // 麦克风才需要高门限防键盘/说话声
-      const isLoop = this.srcName === '系统声音';
-      const musicOn = isLoop ? (avg > 2 || full > 8) : (avg > 9 || full > 45);
-      // 分档静音自愈(仅回环源:麦克风安静是常态):
+      // 回环流里只有播放器输出、没有环境音，"有声即音乐"
+      const musicOn = avg > 2 || full > 8;
+      // 分档静音自愈:
       // 本流从没出过声→5s 重拾(死产流，健康流有歌 1s 内必有信号);
       // 出过声后转静→等 15s(可能只是歌间隙/暂停);一有信号计数清零
-      if (isLoop) {
-        if (musicOn) { this.everHeard = true; this.silentSince = 0; this.reacquires = 0; }
-        else {
-          if (!this.silentSince) this.silentSince = now;
-          if (now - this.silentSince > (this.everHeard ? 15000 : 5000)) {
-            this.silentSince = 0;
-            if (this.reacquire(this.everHeard ? '出声后转静15s' : '死产流(从未出声)')) return;
-          }
+      if (musicOn) { this.everHeard = true; this.silentSince = 0; this.reacquires = 0; }
+      else {
+        if (!this.silentSince) this.silentSince = now;
+        if (now - this.silentSince > (this.everHeard ? 15000 : 5000)) {
+          this.silentSince = 0;
+          if (this.reacquire(this.everHeard ? '出声后转静15s' : '死产流(从未出声)')) return;
         }
       }
       if (musicOn) {
@@ -107,11 +99,9 @@ const Music = {
       if (!this.dancing)
         this.status = musicOn
           ? `${this.srcName}:找节拍中(低频${avg.toFixed(0)}/全频${full.toFixed(0)})`
-          : `${this.srcName}:安静(低频${avg.toFixed(1)}/全频${full.toFixed(1)}${isLoop && !this.everHeard ? '，流无信号' : ''})`;
-      // 节拍门限地板按音源分:回环 8/6，麦克风 16/12(跳舞中取低档，粘性)
-      const gate = this.dancing
-        ? Math.max(isLoop ? 6 : 12, avg * 1.18)
-        : Math.max(isLoop ? 8 : 16, avg * 1.3);
+          : `${this.srcName}:安静(低频${avg.toFixed(1)}/全频${full.toFixed(1)}${!this.everHeard ? '，流无信号' : ''})`;
+      // 节拍门限地板:回环 8/6(跳舞中取低档，粘性)
+      const gate = this.dancing ? Math.max(6, avg * 1.18) : Math.max(8, avg * 1.3);
       // 桌宠自己说话的 blip 音效会进系统回环,节奏规律得像鼓点——说话期间不采拍
       if (e > gate && now - this.lastBeat > 260 && !S.speaking) {
         this.lastBeat = now;

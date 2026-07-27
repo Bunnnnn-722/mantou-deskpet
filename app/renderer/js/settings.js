@@ -53,7 +53,7 @@ function renderSettings() {
       <div class="setting-toggle"><span>观察记录分享给 Agent(只导出文字摘要，不含截图)</span><div class="toggle ${CFG.agentShare !== false ? 'on' : ''}" id="tg-agentshare"></div></div>
       <div class="setting-toggle"><span>每天首启报天气</span><div class="toggle ${CFG.morningWeather ? 'on' : ''}" id="tg-weather"></div></div>
       <div class="setting-toggle"><span>开机自动启动</span><div class="toggle" id="tg-autostart"></div></div>
-      <div class="setting-toggle${noDance ? ' gated' : ''}"><span>听歌点头(系统声音，拿不到才用麦克风)${noDance ? '<em class="gate-why">当前形象没有点头动画</em>' : ''}</span><div class="toggle ${CFG.musicMode && !noDance ? 'on' : ''}" id="tg-music"></div></div>
+      <div class="setting-toggle${noDance ? ' gated' : ''}"><span>听歌点头(抓系统声音，需屏幕录制权限)${noDance ? '<em class="gate-why">当前形象没有点头动画</em>' : ''}</span><div class="toggle ${CFG.musicMode && !noDance ? 'on' : ''}" id="tg-music"></div></div>
       <div class="api-field"><label>素材BPM</label><input class="api-input" id="set-bpm" type="number" min="40" max="200" value="${CFG.danceBpm}" title="点头素材原生BPM，用节奏校准器实测后填"></div>
       <div id="music-status" style="font-size:11px;color:var(--muted-2);padding:2px 0 6px;">${CFG.musicMode ? Music.status : ''}</div>
     </div></details>
