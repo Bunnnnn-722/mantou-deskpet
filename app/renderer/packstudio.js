@@ -343,7 +343,8 @@ const PackStudio = {
     let html = `<div style="font-size:12px;font-weight:600;color:var(--ink-hi);margin:14px 0 2px;">
       「${name}」动画工坊 · 每个槽位传一段绿/蓝/品红底视频,自动抠图入包</div>
       <div class="tip" style="margin:4px 0 6px;">循环槽位的视频尽量首尾是同一姿势;首尾对不上也没关系,
-      工坊会自动找循环切点或倒放补循环。传完先点「预览」看效果,不满意重传即可覆盖。</div>
+      工坊会自动找循环切点或倒放补循环。传完先点「预览」看效果,不满意重传即可覆盖。
+      <b>动画预览窗在页面最底部</b>,上传/点预览后会自动滚过去。</div>
       <table class="anim-map"><tr><th>槽位</th><th>状态</th><th style="width:260px;"></th></tr>`;
     for (const cat of CATS) {
       html += `<tr><td colspan="3" style="color:var(--accent);font-weight:600;padding-top:8px;">${cat}</td></tr>`;

@@ -478,7 +478,10 @@ const PersonaUI = {
       `${anim} · ${m.frames} 帧 @ ${(+m.fps).toFixed(1)}fps(逐帧播放)`;
     // 必须给具体值:置空串会回落到样式表的 display:none(大预览框从来没真正
     // 显示过的存量 bug,2026-07-28 工坊联调抓包)
-    document.getElementById('persona-preview').style.display = 'block';
+    const pv = document.getElementById('persona-preview');
+    pv.style.display = 'block';
+    // 预览框在页面最底部,不滚过去用户压根不知道它出现了(真机反馈 07-28)
+    pv.scrollIntoView({ behavior: 'smooth', block: 'end' });
     let f = 0;
     this._pv.img = img;
     this._pv.timer = setInterval(() => {

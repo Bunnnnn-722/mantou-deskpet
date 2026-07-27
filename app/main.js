@@ -567,20 +567,21 @@ ipcMain.handle('persona-remove-anim', (_e, { id, slot }) => {
   } catch (e) { return { ok: false, err: String(e.message || e).slice(0, 120) }; }
 });
 
-// 操作说明:打包在 app 里的 markdown。打开=拷到临时目录再交给系统默认程序
-// (asar 里的文件 shell.openPath 打不开,必须先落地);导出=存到用户选的位置
+// 操作说明:打包在 app 里的纯文本(txt 而非 md:不是人人有 markdown 阅读器,
+// 记事本/文本编辑双击就开,用户拍板 07-28)。打开=拷到临时目录再交给系统默认
+// 程序(asar 里的文件 shell.openPath 打不开,必须先落地);导出=存到用户选的位置
 ipcMain.handle('persona-open-guide', async (_e, mode) => {
-  const src = path.join(__dirname, 'docs', '角色包制作指南.md');
+  const src = path.join(__dirname, 'docs', '角色包制作指南.txt');
   try {
     if (mode === 'export') {
       const { dialog } = require('electron');
-      const r = await dialog.showSaveDialog({ defaultPath: '角色包制作指南.md' });
+      const r = await dialog.showSaveDialog({ defaultPath: '角色包制作指南.txt' });
       if (r.canceled || !r.filePath) return { ok: false, err: 'canceled' };
       fs.copyFileSync(src, r.filePath);
       return { ok: true, path: r.filePath };
     }
     const os = require('os');
-    const tmp = path.join(os.tmpdir(), 'mantou-角色包制作指南.md');
+    const tmp = path.join(os.tmpdir(), 'mantou-角色包制作指南.txt');
     fs.copyFileSync(src, tmp);
     const err = await require('electron').shell.openPath(tmp);
     return err ? { ok: false, err } : { ok: true };
