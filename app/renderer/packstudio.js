@@ -169,6 +169,66 @@ const PackPipe = {
     return nf;
   },
 
+  /* 静止悬浮块清除(平台水印专项):与角色主体不连通、且整段"帧帧都在+
+   * 纹丝不动"的色块=烧在视频里的水印(豆包"AI生成"角标实锤),全帧抹掉。
+   * 游走的小鱼/泡泡等道具在自己的位置上只出现一部分帧,不会误伤 */
+  removeStaticGhosts(frames) {
+    const { width: w, height: h } = frames[0];
+    const n = frames.length;
+    const union = new Uint8Array(w * h);
+    for (const f of frames) {
+      const d = f.data;
+      for (let p = 0; p < w * h; p++) if (d[p * 4 + 3] > 32) union[p] = 1;
+    }
+    // 并集连通块(4 连通 BFS),记每块像素与最大块
+    const label = new Int32Array(w * h).fill(-1);
+    const comps = [];
+    const stack = new Int32Array(w * h);
+    for (let p = 0; p < w * h; p++) {
+      if (!union[p] || label[p] >= 0) continue;
+      const id = comps.length, px = [];
+      let top = 0;
+      stack[top++] = p; label[p] = id;
+      while (top) {
+        const q = stack[--top];
+        px.push(q);
+        const x = q % w;
+        if (x > 0 && union[q - 1] && label[q - 1] < 0) { label[q - 1] = id; stack[top++] = q - 1; }
+        if (x < w - 1 && union[q + 1] && label[q + 1] < 0) { label[q + 1] = id; stack[top++] = q + 1; }
+        if (q >= w && union[q - w] && label[q - w] < 0) { label[q - w] = id; stack[top++] = q - w; }
+        if (q < w * (h - 1) && union[q + w] && label[q + w] < 0) { label[q + w] = id; stack[top++] = q + w; }
+      }
+      comps.push(px);
+    }
+    if (comps.length < 2) return 0;
+    const mainId = comps.reduce((b, c, i) => (c.length > comps[b].length ? i : b), 0);
+    let cleared = 0;
+    for (let i = 0; i < comps.length; i++) {
+      if (i === mainId || comps[i].length < 12) continue;
+      // 时域统计:出现率(alpha>32 的帧占比)与颜色波动(相对首个可见帧)
+      let present = 0, dev = 0, devN = 0;
+      for (const p of comps[i]) {
+        let cnt = 0, r0 = -1, g0 = 0, b0 = 0;
+        for (let k = 0; k < n; k++) {
+          const d = frames[k].data, o = p * 4;
+          if (d[o + 3] > 32) {
+            cnt++;
+            if (r0 < 0) { r0 = d[o]; g0 = d[o + 1]; b0 = d[o + 2]; }
+            else { dev += (Math.abs(d[o] - r0) + Math.abs(d[o + 1] - g0) + Math.abs(d[o + 2] - b0)) / 3; devN++; }
+          }
+        }
+        present += cnt / n;
+      }
+      present /= comps[i].length;
+      const avgDev = devN ? dev / devN : 0;
+      if (present >= 0.9 && avgDev < 10) {
+        for (const p of comps[i]) for (let k = 0; k < n; k++) frames[k].data[p * 4 + 3] = 0;
+        cleared++;
+      }
+    }
+    return cleared;
+  },
+
   /* 全序列 alpha 并集 bbox(pad 8):统一裁切保证跨动画锚点一致 */
   unionBox(frames, pad = 8) {
     const { width: w, height: h } = frames[0];
@@ -262,6 +322,9 @@ const PackPipe = {
         if (det.mode !== 'green') this.erodeAlpha(frames[i]);
         if (i % 4 === 0) { say(`抠图 ${i + 1}/${frames.length}`); await this.tick(); }
       }
+      // 平台水印清除(豆包等会把"AI生成"角标烧进画面,色键后变成悬空文字)
+      const ghosts = this.removeStaticGhosts(frames);
+      if (ghosts) report.watermark = `清掉 ${ghosts} 个静止悬浮块(平台水印)`;
       // 倒放补循环:正放到底再倒回首帧(掐头去尾防端点连打两帧)。
       // 必须放在抠图之后——拼接复用的是同一批 ImageData 引用,放前面会被
       // 二次色键(去污后的背景 dom≈0,整帧变实心,实测翻车)
