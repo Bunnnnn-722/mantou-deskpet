@@ -102,6 +102,7 @@ async function handleConfigChanged() {
   setupPassthrough();
   setupHover();
   setupPetMouse();
+  Dock.init();
   setupChat();
   FX.init();
   API.onExternalSay(({ text, emo }) => { S.lastActive = Date.now(); wakeUp(true); sayLocal(text, emo); });

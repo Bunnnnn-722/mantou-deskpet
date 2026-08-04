@@ -17,6 +17,7 @@ const API = (window.pet && !(window.pet instanceof Element)) ? window.pet : {
   musicAppRunning: async () => true,
   nowPlaying: async () => '',
   moveToDisplay: async () => null,
+  displayInfo: async () => null,
   onExternalSay: () => {},
   getWeather: async () => null,
   getAutostart: async () => false,

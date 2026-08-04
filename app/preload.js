@@ -4,6 +4,7 @@ contextBridge.exposeInMainWorld('pet', {
   setIgnore: (flag) => ipcRenderer.invoke('set-ignore', flag),
   dragBy: (dx, dy) => ipcRenderer.send('drag-by', { dx, dy }),
   moveToDisplay: (x, y) => ipcRenderer.invoke('move-to-display', { x, y }),
+  displayInfo: () => ipcRenderer.invoke('display-info'),
   captureScreen: () => ipcRenderer.invoke('capture-screen'),
   getConfig: () => ipcRenderer.invoke('get-config'),
   setConfig: (cfg) => ipcRenderer.invoke('set-config', cfg),

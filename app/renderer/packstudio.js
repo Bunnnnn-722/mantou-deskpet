@@ -31,6 +31,9 @@ const PACK_SLOTS = [
   { key: 'sleep_in', label: '入睡', cat: '睡眠', loop: false, feature: '' },
   { key: 'sleep', label: '睡觉循环', cat: '睡眠', loop: true, feature: '缺了「深夜睡觉」开关置灰' },
   { key: 'sleep_out', label: '睡醒', cat: '睡眠', loop: false, feature: '' },
+  // 贴边收起/滑出:只有这两条,固定不给自定义入口(方向只支持右边)
+  { key: 'dock_out', label: '贴边收起', cat: '贴边', loop: false, feature: '缺了就用默认效果:整个人横着滑出屏幕' },
+  { key: 'dock_in', label: '从边缘滑出', cat: '贴边', loop: false, feature: '缺了就用默认效果:横着滑回来' },
   { key: 'egg_yawn', label: '打哈欠', cat: '彩蛋', loop: true, feature: '彩蛋都是选配,待机时随机播' },
   { key: 'egg_breeze', label: '风吹', cat: '彩蛋', loop: true, feature: '' },
   { key: 'egg_fx1', label: '特效彩蛋一', cat: '彩蛋', loop: true, feature: '' },
@@ -423,6 +426,8 @@ const PackPipe = {
 
 /* 按前缀抽池子的分类:这几类的槽位数量不限,工坊给「+ 新增槽位」入口 */
 const CAT_POOL = { 表情: 'emo_', 点击: 'touch_', 彩蛋: 'egg_', 自习: 'slack_' };
+/* 过渡型槽位:首尾就该不一样(入睡=睁眼→闭眼,贴边=立绘→空白),校验方向与循环槽位相反 */
+const TRANSITION_SLOTS = ['sleep_in', 'sleep_out', 'dock_out', 'dock_in'];
 
 /* ================= 工坊 UI(挂在形象卡片「动画工坊」按钮上) ================= */
 const PackStudio = {
@@ -747,10 +752,10 @@ const PackStudio = {
       const d = this._ends[ck];
       if (d == null) { cell.textContent = ''; continue; }
       const same = d < PackPipe.ENDS_SAME;
-      const trans = s.key === 'sleep_in' || s.key === 'sleep_out';
+      const trans = TRANSITION_SLOTS.includes(s.key);
       let msg = `首尾残差 ${d.toFixed(1)} ✓`, color = 'var(--muted-2)';
       if (trans && same) {
-        msg = `⚠ 首尾几乎一样(${d.toFixed(1)})——入睡/睡醒是过渡动画,首尾该是睁眼→闭眼,换一条`;
+        msg = `⚠ 首尾几乎一样(${d.toFixed(1)})——这是过渡动画,首尾就该不一样(入睡=睁眼→闭眼,贴边=立绘→空白),换一条`;
         color = 'var(--warn)';
       } else if (!trans && s.loop !== false && !same) {
         msg = `⚠ 首尾差得多(${d.toFixed(1)})——循环播到接缝会跳,换一条首尾同姿势的`;

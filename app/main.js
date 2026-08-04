@@ -275,6 +275,17 @@ function currentDisplay() {
   return screen.getDisplayMatching(win.getBounds());
 }
 
+/* 贴边 vs 跳屏的裁决依据:桌宠所在屏的右边还有没有别的屏。
+ * 有 → 拖到右边缘是跳过去;没有(已经是最右一块) → 拖到右边缘是贴边收起。
+ * 跟 macOS 把光标推过去的直觉一致,不用再教用户第二套手势。 */
+ipcMain.handle('display-info', () => {
+  if (!win) return null;
+  const cur = currentDisplay();
+  const edge = cur.bounds.x + cur.bounds.width;
+  const hasRight = screen.getAllDisplays().some((d) => d.id !== cur.id && d.bounds.x >= edge - 8);
+  return { hasRight, workArea: cur.workArea };
+});
+
 // 多显示器跳岛:光标(屏幕坐标)在哪块屏，窗口就铺满哪块屏的工作区
 ipcMain.handle('move-to-display', (_e, { x, y }) => {
   if (!win) return null;

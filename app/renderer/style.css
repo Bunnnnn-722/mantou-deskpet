@@ -100,6 +100,21 @@ button,input{font-family:inherit;}
 
 /* ===== 桌宠(馒头:毛玻璃程序化本体,零素材) ===== */
 #pet-wrapper{position:absolute;right:20px;bottom:16px;width:230px;height:210px;}
+/* 贴边收起的默认过场(包里没有 dock_out 时用):整个人横着滑出屏幕再淡掉 */
+#pet-wrapper.docking{transition:transform 0.34s cubic-bezier(0.4,0,0.7,0.2),opacity 0.34s;
+  transform:translateX(115%);opacity:0;pointer-events:none;}
+#pet-wrapper.persona-on.docking{transform:translateX(-50%) translateX(115%);}
+/* 收起后贴在右边缘的把手:窄条 + 一道竖亮线,悬停外扩一点 */
+#dock-tab{position:absolute;right:0;width:13px;height:62px;border-radius:9px 0 0 9px;
+  background:var(--glass-bg);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+  border:1px solid var(--glass-border);border-right:none;cursor:pointer;z-index:40;
+  display:flex;align-items:center;justify-content:center;
+  opacity:0;pointer-events:none;transform:translateX(6px);
+  transition:opacity 0.24s,transform 0.24s,width 0.16s;
+  box-shadow:-4px 4px 14px rgba(30,50,70,0.18);}
+#dock-tab.show{opacity:0.72;pointer-events:auto;transform:none;}
+#dock-tab.show:hover{opacity:1;width:17px;}
+#dock-tab span{display:block;width:2px;height:22px;border-radius:2px;background:var(--edge-hi,rgba(255,255,255,0.8));}
 /* 激活角色包:包装容器跟着拉高,不然 360px 的 canvas 会溢出 210px 的 wrapper 被裁掉 */
 #pet-wrapper.persona-on{height:560px;width:300px;}
 #pet{position:absolute;left:31px;bottom:14px;width:168px;height:137px;cursor:pointer;z-index:2;

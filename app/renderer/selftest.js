@@ -50,6 +50,15 @@
       S.speaking = true; S.speechBeat = Date.now() - 60000;
       ok('speaking 卡死心跳自愈', await waitFor(() => !S.speaking, 9000));
 
+      // ⑤b 贴边收起/滑出双向(没有 dock_ 动画时走默认 CSS 过场)
+      await Dock.out('test');
+      ok('贴边收起(人物隐藏+把手出现)',
+        $('pet-wrapper').style.visibility === 'hidden' && $('dock-tab').classList.contains('show'));
+      await Dock.in();
+      await waitFor(() => !Dock.docked, 2000);
+      ok('从边缘滑出(人物回来+把手收掉)',
+        $('pet-wrapper').style.visibility !== 'hidden' && !$('dock-tab').classList.contains('show'));
+
       // ⑥ 形象热切换双向(启用=写键;切回=删键,删键曾被 merge 借尸还魂)
       // 用本机第一个已安装角色包测,不依赖任何特定包
       const list = await API.personaList();

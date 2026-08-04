@@ -8,6 +8,10 @@
 <body>
 <div id="stage">
 
+  <!-- 贴边后停在右边缘的小把手:点一下人物滑回来(放 wrapper 外面——
+       wrapper 收起后会 visibility:hidden,放里面把手会跟着看不见) -->
+  <div id="dock-tab" class="interactive" title="点一下让它出来"><span></span></div>
+
   <div id="pet-wrapper" class="interactive">
     <div id="bubble"></div>
     <div id="todo-banner"></div>
@@ -26,6 +30,9 @@
       <!-- F2 精简版:扣子客户端在跑才显示(state-ui 轮询检测)，点击直接拉起扣子窗口 -->
       <button class="hbtn" id="btn-coze" data-tip="打开扣子客户端" aria-label="打开扣子" style="display:none">
         <svg viewBox="0 0 20 20"><path d="M3.5 10 16.5 4l-3.6 12-3.4-4.6zM9.5 11.4 16.5 4"/></svg>
+      </button>
+      <button class="hbtn" id="btn-dock" data-tip="贴到右边收起" aria-label="贴边收起">
+        <svg viewBox="0 0 20 20"><path d="M16.5 3.5v13"/><path d="M3.5 10h9"/><path d="M9 6.5 12.5 10 9 13.5"/></svg>
       </button>
       <button class="hbtn" data-panel="settings" data-tip="设置" aria-label="设置">
         <svg viewBox="0 0 20 20"><path d="M3.5 6h13M3.5 10h13M3.5 14h13"/><circle cx="8" cy="6" r="1.7" fill="#10151d"/><circle cx="13" cy="10" r="1.7" fill="#10151d"/><circle cx="6.5" cy="14" r="1.7" fill="#10151d"/></svg>
@@ -153,6 +160,7 @@
 <script src="js/player.js"></script>
 <script src="js/fx.js"></script>
 <script src="js/behavior.js"></script>
+<script src="js/dock.js"></script>
 <script src="js/state-ui.js"></script>
 <script src="js/chat.js"></script>
 <script src="js/todo.js"></script>

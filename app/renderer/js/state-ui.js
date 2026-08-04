@@ -275,9 +275,10 @@ function positionPanel(el) {
 /* ---- 点击/拖拽:头/手/身体 分区 ---- */
 function setupPetMouse() {
   const cv = $('pet');
-  let down = null, dragged = false;
+  let down = null, dragged = false, wantDock = false;
   let dragV = 0;
   cv.addEventListener('mousedown', (e) => {
+    Dock.probe();          // 拖之前先问一次「右边还有没有屏」,拖动过程里不再往返 IPC
     const r = document.getElementById('pet-wrapper').getBoundingClientRect();
     down = { x: e.screenX, y: e.screenY, grabX: e.clientX - r.left, grabY: e.clientY - r.top };
     dragged = false;
@@ -296,18 +297,31 @@ function setupPetMouse() {
         w.style.right = 'auto';
         w.style.bottom = 'auto';
       }
+      // 上下边界要按「人物」算,不能按 wrapper 算:包形象的 wrapper 在头顶
+      // 预留了 200px 给气泡/待办横条,拿 wrapper.top 去卡 -40 等于人物脑袋
+      // 提前 160px 就顶死(包形象拖不上去的真凶)。padTop=头顶那段空档。
+      const petEl = document.getElementById('pet');
+      const padTop = Math.max(0, w.offsetHeight - petEl.offsetHeight - 14);
       const nx = Math.max(-140, Math.min(window.innerWidth - 140, parseFloat(w.style.left) + dx));
-      const ny = Math.max(-40, Math.min(window.innerHeight - 120, parseFloat(w.style.top) + dy));
+      const ny = Math.max(-(padTop + 20),
+        Math.min(window.innerHeight - padTop - 60, parseFloat(w.style.top) + dy));
       w.style.left = nx + 'px';
       w.style.top = ny + 'px';
       down = { x: e.screenX, y: e.screenY, grabX: down.grabX, grabY: down.grabY };
-      // 多显示器跳岛:拖到屏幕边缘时问主进程"光标在哪块屏"，窗口跳过去，桌宠跟着光标落位
-      if (e.clientX < 2 || e.clientY < 2 ||
-          e.clientX > window.innerWidth - 2 || e.clientY > window.innerHeight - 2) {
+      /* 撞到右边缘要分两种情况(贴边 vs 跳屏),裁决依据是「右边还有没有屏」:
+       * 有 → 跳过去(老行为);没有 → 记一笔,松手时贴边收起。其余三边照旧跳屏。 */
+      const atRight = e.clientX > window.innerWidth - 2;
+      if (atRight && Dock.hasRight === false) {
+        wantDock = true;
+      } else if (e.clientX < 2 || e.clientY < 2 || atRight ||
+          e.clientY > window.innerHeight - 2) {
+        wantDock = false;
         API.moveToDisplay(e.screenX, e.screenY).then((wa) => {
           if (!wa) return;
+          const petEl2 = document.getElementById('pet');
+          const pad2 = Math.max(0, w.offsetHeight - petEl2.offsetHeight - 14);
           w.style.left = Math.max(-140, e.screenX - wa.x - down.grabX) + 'px';
-          w.style.top = Math.max(-40, e.screenY - wa.y - down.grabY) + 'px';
+          w.style.top = Math.max(-(pad2 + 20), e.screenY - wa.y - down.grabY) + 'px';
         });
       }
       // 拖拽物理:按水平速度轻微倾斜(幅度收着，±5° 意思一下就够)。
@@ -325,6 +339,7 @@ function setupPetMouse() {
     if (!down) return;
     const wasDrag = dragged;
     down = null; dragged = false;
+    if (wasDrag && wantDock) { wantDock = false; Dock.out('drag'); }
     if (wasDrag) {
       // 松手回弹;回弹完清掉内联 transform,交还样式表(包形象的居中/hover 才能恢复)
       dragV = 0;
