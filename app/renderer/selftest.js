@@ -58,6 +58,18 @@
         const cfgA = { ...(await API.getConfig()), activePersona: pack.id };
         await API.setConfig(cfgA); await handleConfigChanged();
         ok('热切换→角色包', await waitFor(() => Persona.active?.id === pack.id && spriteVis(), 20000));
+        // ⑥b 槽位映射:工坊把某个槽位指到包里另一条动画,桌宠该按映射取素材
+        // (用户在工坊对调彩蛋/摸鱼时走的就是这条路)。测完把包的 slotMap 还原
+        const man0 = (await API.personaManifest(pack.id))?.manifest || {};
+        const alt = Object.keys(man0).find((k) => k !== 'idle');
+        if (alt) {
+          const meta0 = (await API.personaManifest(pack.id))?.persona?.slotMap || {};
+          await window.pet.personaSetMeta(pack.id, { slotMap: { think: alt } });
+          await Persona.reloadMeta();
+          ok('槽位映射改指向', Persona.manifest?.think?.src === alt);
+          await window.pet.personaSetMeta(pack.id, { slotMap: meta0 });
+          await Persona.reloadMeta();
+        } else ok('槽位映射(包里动画不足,跳过)', true);
         const cfgB = { ...(await API.getConfig()) }; delete cfgB.activePersona;
         await API.setConfig(cfgB); await handleConfigChanged();
         ok('热切换→馒头(删键方向)', await waitFor(() => !Persona.active && bunVis(), 9000));

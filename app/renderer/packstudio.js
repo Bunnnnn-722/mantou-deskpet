@@ -363,6 +363,31 @@ const PackPipe = {
     } finally { URL.revokeObjectURL(url); }
   },
 
+  /* 首尾帧残差(按槽位映射校验用):把雪碧图的第 0 帧和最后一帧缩到 160px 宽再比。
+   * 实测标定(两套自制包共 48 条):循环动画 0.5~3.0,入睡/睡醒过渡 5.9~21.6,
+   * 中间这道 4.5 的缝把两类分得干干净净 */
+  ENDS_SAME: 4.5,
+  async measureEnds(id, key, m) {
+    const url = await window.pet.personaFile(id, key + '.webp');
+    if (!url) return null;
+    const img = new Image();
+    // onload 而非 decode():大雪碧图 decode() 在部分 Chromium 环境会挂死(实测)
+    await new Promise((r) => { img.onload = r; img.onerror = r; img.src = url; });
+    if (!img.width) return null;
+    const W = 160, H = Math.max(1, Math.round(m.fh * W / m.fw));
+    const cv = document.createElement('canvas');
+    cv.width = W; cv.height = H;
+    const ctx = cv.getContext('2d', { willReadFrequently: true });
+    const grab = (i) => {
+      ctx.clearRect(0, 0, W, H);
+      ctx.drawImage(img, (i % m.cols) * m.fw, Math.floor(i / m.cols) * m.fh, m.fw, m.fh, 0, 0, W, H);
+      return ctx.getImageData(0, 0, W, H);
+    };
+    const a = grab(0), b = grab(Math.max(0, m.frames - 1));
+    img.src = '';                      // 早点松开解码后的位图(单张可达上百 MB)
+    return this.frameDiff(a, b, 1);
+  },
+
   /* 首帧一致性:新动画首帧 vs 待机首帧(公共画布坐标系,64 格采样)。
    * 轮廓 IoU 低/交集色差大 → 切换动画会跳变,提醒但不拦(用户自己定夺) */
   compareFirstFrames(a, b) {
@@ -397,36 +422,77 @@ const PackPipe = {
 const PackStudio = {
   busy: false,
 
+  /* 槽位 → 实际动画(persona.json 的 slotMap;没配就是同名) */
+  srcOf(slot, map) { return slot in map ? map[slot] : slot; },
+
   async show(id, name) {
     const det = document.getElementById('persona-detail');
     const data = await window.pet.personaManifest(id);
     if (!data) return;
-    const man = data.manifest;
+    const man = data.manifest;                 // 包里实际有的动画(文件名)
+    const map = { ...(data.persona.slotMap || {}) };
+    const offEggs = data.persona.disabledEggs || [];
+    const assets = Object.keys(man);
     const CATS = [...new Set(PACK_SLOTS.map((s) => s.cat))];
+    // 目录外的动画(slack_fish 这类自定义名)也要能被选中,单列一组好让用户看见
+    const usedBySlot = new Set(PACK_SLOTS.map((s) => this.srcOf(s.key, map)));
+    const orphan = assets.filter((k) => !usedBySlot.has(k));
+
+    const opts = (sel) => ['<option value="">(空着 · 没有这个动作)</option>']
+      .concat(assets.map((k) => `<option value="${k}" ${sel === k ? 'selected' : ''}>${k}</option>`)).join('');
+
     let html = `<div style="font-size:12px;font-weight:600;color:var(--ink-hi);margin:14px 0 2px;">
-      「${name}」动画工坊 · 每个槽位传一段绿/蓝/品红底视频,自动抠图入包</div>
-      <div class="tip" style="margin:4px 0 6px;">循环槽位的视频尽量首尾是同一姿势;首尾对不上也没关系,
-      工坊会自动找循环切点或倒放补循环。传完先点「预览」看效果,不满意重传即可覆盖。
+      「${name}」动画工坊 · 传视频自动抠图入包;每个槽位用哪条动画也在这里改</div>
+      <div class="tip" style="margin:4px 0 6px;">「用哪条动画」是一张映射表:想把彩蛋和摸鱼对调,
+      直接在两行的下拉里互换即可,不用改文件名。上传视频会写进<b>本槽位同名</b>的动画并把映射复位。
+      循环槽位的视频尽量首尾同一姿势,对不上工坊会自动找切点或倒放补循环;
       <b>动画预览窗在页面最底部</b>,上传/点预览后会自动滚过去。</div>
-      <table class="anim-map"><tr><th>槽位</th><th>状态</th><th style="width:260px;"></th></tr>`;
+      <table class="anim-map"><tr><th style="width:31%;">槽位</th><th style="width:22%;">用哪条动画</th>
+        <th>状态</th><th style="width:236px;"></th></tr>`;
+    const row = (s, cur, m) => `<tr data-slot="${s.key}">
+      <td>${s.label} <span style="color:var(--muted-2);font-family:ui-monospace,monospace;">${s.key}</span>${s.must ? ' <span class="tag-ok">●必传</span>' : ''}
+        ${s.feature ? `<div style="font-size:10px;color:var(--muted-2);">${s.feature}</div>` : ''}</td>
+      <td><select class="ps-map" data-slot="${s.key}">${opts(cur)}</select></td>
+      <td class="ps-status">${m ? `<span class="tag-ok">✓ ${m.frames} 帧 @ ${(+m.fps).toFixed(0)}fps</span>` : '<span class="tag-miss">未上传</span>'}
+        <div class="ps-check" style="font-size:10px;margin-top:2px;"></div></td>
+      <td class="ps-acts">
+        <button class="live-btn" data-up="${s.key}">${m ? '重新上传' : '上传视频'}</button>
+        ${m ? `<button class="live-btn" data-pv="${s.key}" style="margin-left:6px;">预览</button>
+               <button class="live-btn" data-live="${s.key}" style="margin-left:6px;" title="在桌宠上真机播放">▶ 桌宠</button>
+               <button class="live-btn" data-del="${s.key}" style="margin-left:6px;">删除</button>` : ''}
+        ${s.key.startsWith('egg_') && m ? `<button class="live-btn" data-eggtoggle="${s.key}" style="margin-left:6px;"
+            title="禁用的彩蛋不进待机随机池">${offEggs.includes(s.key) ? '启用' : '禁用'}</button>` : ''}
+      </td></tr>`;
     for (const cat of CATS) {
-      html += `<tr><td colspan="3" style="color:var(--accent);font-weight:600;padding-top:8px;">${cat}</td></tr>`;
+      html += `<tr><td colspan="4" style="color:var(--accent);font-weight:600;padding-top:8px;">${cat}</td></tr>`;
       for (const s of PACK_SLOTS.filter((x) => x.cat === cat)) {
-        const m = man[s.key];
-        html += `<tr data-slot="${s.key}">
-          <td>${s.label} <span style="color:var(--muted-2);font-family:ui-monospace,monospace;">${s.key}</span>${s.must ? ' <span class="tag-ok">●必传</span>' : ''}
-            ${s.feature ? `<div style="font-size:10px;color:var(--muted-2);">${s.feature}</div>` : ''}</td>
-          <td class="ps-status">${m ? `<span class="tag-ok">✓ ${m.frames} 帧 @ ${(+m.fps).toFixed(0)}fps</span>` : '<span class="tag-miss">未上传</span>'}</td>
-          <td class="ps-acts">
-            <button class="live-btn" data-up="${s.key}">${m ? '重新上传' : '上传视频'}</button>
-            ${m ? `<button class="live-btn" data-pv="${s.key}" style="margin-left:6px;">预览</button>
-                   <button class="live-btn" data-del="${s.key}" style="margin-left:6px;">删除</button>` : ''}
-          </td></tr>`;
+        const cur = this.srcOf(s.key, map);
+        html += row(s, man[cur] ? cur : '', man[cur]);
       }
     }
-    html += `</table><input type="file" id="ps-file" accept="video/mp4,video/webm,video/quicktime" style="display:none;">`;
+    if (orphan.length) {
+      html += `<tr><td colspan="4" style="color:var(--accent);font-weight:600;padding-top:8px;">
+        目录外的动画(没有槽位在用,可以在上面的下拉里指过去)</td></tr>`;
+      for (const k of orphan) {
+        const m = man[k];
+        html += `<tr><td colspan="2"><span style="font-family:ui-monospace,monospace;">${k}</span></td>
+          <td><span class="tag-ok">✓ ${m.frames} 帧 @ ${(+m.fps).toFixed(0)}fps</span></td>
+          <td><button class="live-btn" data-pvraw="${k}">预览</button>
+              <button class="live-btn" data-delraw="${k}" style="margin-left:6px;">删除</button></td></tr>`;
+      }
+    }
+    html += `</table>
+      <div id="ps-map-r" style="font-size:11px;color:var(--success);margin-top:6px;min-height:15px;"></div>
+      <input type="file" id="ps-file" accept="video/mp4,video/webm,video/quicktime" style="display:none;">`;
+    // 全屏特效清单(原「动画清单」页搬过来)
+    const fx = data.persona.fx || [];
+    html += `<div style="font-size:11px;color:var(--muted);margin-top:8px;">全屏特效:` +
+      (fx.length ? fx.map((f) => `<span class="tag-ok">[fx:${f}] ✓</span>`).join(' ')
+                 : '<span class="tag-miss">无(由码绘寒潮兜底)</span>') + '</div>';
+    html += PersonaUI.emoProtocolHtml(man, data.persona);
     det.innerHTML = html;
     det.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    PersonaUI.bindEmoProtocol(id);
 
     const fileInput = det.querySelector('#ps-file');
     det.querySelectorAll('[data-up]').forEach((b) => b.addEventListener('click', () => {
@@ -437,18 +503,83 @@ const PackStudio = {
       };
       fileInput.click();
     }));
-    det.querySelectorAll('[data-pv]').forEach((b) => b.addEventListener('click', async () => {
+    const preview = async (key) => {
       const fresh = await window.pet.personaManifest(id);
-      if (fresh?.manifest?.[b.dataset.pv]) PersonaUI.playPreview(id, b.dataset.pv, fresh.manifest[b.dataset.pv]);
+      if (fresh?.manifest?.[key]) PersonaUI.playPreview(id, key, fresh.manifest[key]);
+    };
+    det.querySelectorAll('[data-pv]').forEach((b) =>
+      b.addEventListener('click', () => preview(this.srcOf(b.dataset.pv, map))));
+    det.querySelectorAll('[data-pvraw]').forEach((b) =>
+      b.addEventListener('click', () => preview(b.dataset.pvraw)));
+    det.querySelectorAll('[data-live]').forEach((b) =>   // 真机播放走槽位名,桌宠自己按映射解析
+      b.addEventListener('click', () => window.pet.personaPreviewAnim?.(b.dataset.live)));
+    det.querySelectorAll('[data-eggtoggle]').forEach((b) => b.addEventListener('click', async () => {
+      const k = b.dataset.eggtoggle;
+      const list = offEggs.includes(k) ? offEggs.filter((x) => x !== k) : [...offEggs, k];
+      await window.pet.personaSetMeta?.(id, { disabledEggs: list });
+      this.show(id, name);
     }));
-    det.querySelectorAll('[data-del]').forEach((b) => b.addEventListener('click', async () => {
-      const k = b.dataset.del;
-      if (!confirm(`删除「${k}」这条动画?`)) return;
-      const r = await window.pet.personaRemoveAnim(id, k);
+    const del = async (key) => {
+      if (!confirm(`删除「${key}」这条动画?指向它的槽位会变成空的。`)) return;
+      const r = await window.pet.personaRemoveAnim(id, key);
       if (!r.ok) { alert('删除失败:' + r.err); return; }
       await PersonaUI.refresh();
       this.show(id, name);
+    };
+    det.querySelectorAll('[data-del]').forEach((b) =>
+      b.addEventListener('click', () => del(this.srcOf(b.dataset.del, map))));
+    det.querySelectorAll('[data-delraw]').forEach((b) =>
+      b.addEventListener('click', () => del(b.dataset.delraw)));
+    // 改映射:即时写回包(主进程广播 persona-refresh,生效中的形象热重载)
+    det.querySelectorAll('.ps-map').forEach((sel) => sel.addEventListener('change', async () => {
+      const slot = sel.dataset.slot;
+      if (sel.value === slot) delete map[slot]; else map[slot] = sel.value;
+      const ok = await window.pet.personaSetMeta?.(id, { slotMap: map });
+      const r = det.querySelector('#ps-map-r');
+      r.textContent = ok ? `✓ 「${slot}」已指向 ${sel.value || '(空)'}，桌宠已热应用` : '✗ 保存失败';
+      r.style.color = ok ? 'var(--success)' : 'var(--gem)';
+      this.checkEnds(id, map);
     }));
+    this.checkEnds(id, map);
+  },
+
+  /* 首尾帧校验(用户拍板的两条,其余一概不管):
+   *  · 循环槽位 —— 首尾必须基本一样,否则循环播到接缝会跳;
+   *  · 入睡/睡醒 —— 首尾必须不一样(睁眼→闭眼 / 闭眼→睁眼),一样说明放错了动画。
+   * 只提醒不拦截。逐条串行量,量完就松开位图,免得几十张雪碧图一起占内存。 */
+  async checkEnds(id, map) {
+    const det = document.getElementById('persona-detail');
+    const data = await window.pet.personaManifest(id);
+    if (!data) return;
+    const man = data.manifest;
+    this._ends = this._ends || {};
+    for (const s of PACK_SLOTS) {
+      const key = this.srcOf(s.key, map);
+      const m = man[key];
+      const cell = det.querySelector(`tr[data-slot="${s.key}"] .ps-check`);
+      if (!cell) continue;
+      if (!m) { cell.textContent = ''; continue; }
+      const cacheKey = id + ':' + key;
+      if (this._ends[cacheKey] === undefined) {
+        cell.innerHTML = '<span style="color:var(--muted-2);">量首尾帧…</span>';
+        this._ends[cacheKey] = await PackPipe.measureEnds(id, key, m);
+      }
+      const d = this._ends[cacheKey];
+      if (d == null) { cell.textContent = ''; continue; }
+      const same = d < PackPipe.ENDS_SAME;
+      const trans = s.key === 'sleep_in' || s.key === 'sleep_out';
+      let msg = '', color = 'var(--muted-2)';
+      if (trans && same) {
+        msg = `⚠ 首尾几乎一样(${d.toFixed(1)})——入睡/睡醒是过渡动画，首尾该是睁眼→闭眼，换一条`;
+        color = 'var(--warn)';
+      } else if (!trans && s.loop !== false && !same) {
+        msg = `⚠ 首尾差得多(${d.toFixed(1)})——循环播到接缝会跳，换一条首尾同姿势的`;
+        color = 'var(--warn)';
+      } else {
+        msg = `首尾残差 ${d.toFixed(1)} ✓`;
+      }
+      cell.innerHTML = `<span style="color:${color};">${msg}</span>`;
+    }
   },
 
   async upload(id, name, slot, file) {
@@ -463,6 +594,11 @@ const PackStudio = {
       say('写入角色包…');
       const w = await window.pet.personaWriteAnim(id, slot, r.dataUrl, r.entry);
       if (!w.ok) throw new Error(w.err || '落盘失败');
+      // 写的是本槽位同名动画:映射复位,否则传完还指着别人,用户会以为没生效
+      const cur = await window.pet.personaManifest(id);
+      const map = { ...(cur?.persona?.slotMap || {}) };
+      if (slot in map) { delete map[slot]; await window.pet.personaSetMeta?.(id, { slotMap: map }); }
+      delete (this._ends || {})[id + ':' + slot];   // 重传了,首尾残差得重量
       // 首帧一致性校验:与待机首帧比对,差太多提醒(切动画会跳变)
       let warn = '';
       if (slot !== 'idle' && slot !== 'appear') {

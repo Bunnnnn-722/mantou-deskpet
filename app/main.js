@@ -431,12 +431,16 @@ ipcMain.handle('persona-delete', (_e, id) => {
 // 激活/切回馒头(id=null):只写配置，渲染层收 config-changed 自行热切换
 ipcMain.handle('persona-activate', (_e, id) => {
   try {
-    // 启用底线:待机动画必须有(自建包传完 idle 才算能站上桌面)
+    // 启用底线:待机槽位必须有动画(自建包传完 idle 才算能站上桌面)。
+    // idle 被 slotMap 指到别的动画上也算数——看的是槽位解析后有没有素材
     if (id) {
       try {
-        const man = JSON.parse(fs.readFileSync(
-          path.join(PERSONAS_DIR(), id, 'manifest.json'), 'utf8'));
-        if (!man.idle) return false;
+        const dir = path.join(PERSONAS_DIR(), id);
+        const man = JSON.parse(fs.readFileSync(path.join(dir, 'manifest.json'), 'utf8'));
+        let map = {};
+        try { map = JSON.parse(fs.readFileSync(path.join(dir, 'persona.json'), 'utf8')).slotMap || {}; } catch {}
+        const src = 'idle' in map ? map.idle : 'idle';
+        if (!src || !man[src]) return false;
       } catch { return false; }
     }
     const cfg = JSON.parse(fs.readFileSync(configPath(), 'utf8'));
@@ -473,6 +477,21 @@ ipcMain.handle('persona-set-meta', (_e, { id, meta }) => {
     // 彩蛋禁用清单:只收 egg_ 槽位(功能路由槽位禁了动画就播不出来,不许禁)
     if (meta && Array.isArray(meta.disabledEggs))
       j.disabledEggs = meta.disabledEggs.map(String).filter((k) => /^egg_[\w-]+$/.test(k));
+    /* 槽位映射 slotMap:{槽位: 包里实际用哪条动画}。用户想把彩蛋和摸鱼对调、
+     * 又不想改文件名时,在工坊改这张表即可。只存与槽位同名不一致的项;
+     * 值必须是包里真有的动画,空串=这个槽位空着(等于没传) */
+    if (meta && meta.slotMap && typeof meta.slotMap === 'object') {
+      let man = {};
+      try { man = JSON.parse(fs.readFileSync(path.join(PERSONAS_DIR(), id, 'manifest.json'), 'utf8')); } catch {}
+      const out = {};
+      for (const [slot, src] of Object.entries(meta.slotMap)) {
+        if (!/^[a-z0-9_]{1,24}$/.test(slot)) continue;
+        if (src === '') { out[slot] = ''; continue; }          // 显式置空
+        if (typeof src !== 'string' || !man[src] || src === slot) continue;
+        out[slot] = src;
+      }
+      if (Object.keys(out).length) j.slotMap = out; else delete j.slotMap;
+    }
     fs.writeFileSync(pj, JSON.stringify(j, null, 1));
     if (win && !win.isDestroyed()) win.webContents.send('persona-refresh');
     return true;

@@ -132,7 +132,7 @@ const Player = {
       const nowName = this.cur?.name;
       const nowSprite = Persona.active && Persona.has(nowName);
       if (nowSprite) {
-        if (Sprites.images[nowName]) Sprites.draw(nowName, this.frame);
+        if (Sprites.ready(nowName)) Sprites.draw(nowName, this.frame);
       } else if (!Persona.active) {
         BUN.render(nowName, this.frame, this.acc);
       }

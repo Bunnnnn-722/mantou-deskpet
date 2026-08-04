@@ -138,7 +138,7 @@ html.dark #persona-preview{background:rgba(255,255,255,0.055);}
   <div class="tip">形象包 = 一个文件夹(persona.json + manifest.json + 雪碧图 webp + 可选 fx 特效)。
   <b>idle 待机动画必传</b>，其余动画/特效都是可选:包里有的自动接管，没有的由通用小动作兜底。
   包可在 persona.json 用 <b>emoDesc:{"情绪名":"使用场合"}</b> 声明自定义情绪(配 emo_情绪名 动画或
-  emoAliases 映射)，对话里就能触发;情绪词表与场合说明拼进系统提示词，点「动画清单」可查看。</div>
+  emoAliases 映射)，对话里就能触发;情绪词表与场合说明拼进系统提示词，在「动画工坊」页底部可查看和编辑。</div>
   <div style="display:flex;gap:8px;margin-bottom:12px;">
     <button id="import-btn" style="margin-bottom:0;flex:1;">＋ 导入形象包(zip 或文件夹)</button>
     <button id="new-persona-btn" style="font-size:12px;padding:7px 18px;border-radius:10px;border:1px dashed var(--accent-line);background:none;color:var(--accent);cursor:pointer;flex:1;">＋ 新增人设(从零做一个形象)</button>
@@ -262,7 +262,7 @@ const PersonaUI = {
           ? (id ? '<button data-act="deactivate">切回馒馒</button>' : '')
           : `<button data-act="activate">${builtin ? '启用' : '启用这个形象'}</button>`}
         <button data-act="perso">人设</button>
-        ${!builtin ? '<button data-act="studio">动画工坊</button><button data-act="anims">动画清单</button><button data-act="size">尺寸</button><button data-act="delete" class="danger">删除</button>' : ''}
+        ${!builtin ? '<button data-act="studio">动画工坊</button><button data-act="size">尺寸</button><button data-act="delete" class="danger">删除</button>' : ''}
       </div>`;
     div.querySelectorAll('button').forEach((b) => b.addEventListener('click', async (e) => {
       e.stopPropagation();
@@ -319,7 +319,6 @@ const PersonaUI = {
         div.appendChild(row);
       }
       else if (act === 'studio') PackStudio.show(id, name);
-      else if (act === 'anims') this.showAnims(id, name);
       else if (act === 'size') {
         // 内联编辑器(Electron 不支持 window.prompt，弹窗方案会静默失败，踩过坑)
         const old = div.querySelector('.size-row');
@@ -352,74 +351,22 @@ const PersonaUI = {
     }));
     return div;
   },
-  async showAnims(id, name) {
-    const data = await window.pet.personaManifest(id);
-    if (!data) return;
-    const man = data.manifest;
-    const det = document.getElementById('persona-detail');
-    // 槽位分组沿用工坊的目录(PACK_SLOTS.cat),两处保持同一套分类;
-    // 目录外的键(slack_fish 这类自定义槽位)按前缀归队,都不沾边才进「其他」
-    const CAT_HINT = {
-      表情: '表情(聊天 [emo:] 触发)', 点击: '点击(戳它时播)',
-      彩蛋: '彩蛋(待机随机播)', 自习: '摸鱼(自习时播)',
-    };
-    const idxOf = (k) => PACK_SLOTS.findIndex((x) => x.key === k);
-    const catOf = (k) => {
-      const s = PACK_SLOTS.find((x) => x.key === k);
-      if (s) return s.cat;
-      if (k.startsWith('slack_')) return '自习';
-      if (k.startsWith('emo_')) return '表情';
-      if (k.startsWith('touch_')) return '点击';
-      if (k.startsWith('egg_')) return '彩蛋';
-      if (k.startsWith('sleep')) return '睡眠';
-      return '其他';
-    };
-    const GROUPS = [...new Set(PACK_SLOTS.map((s) => s.cat))].concat('其他')
-      .map((c) => [CAT_HINT[c] || c, Object.keys(man).filter((k) => catOf(k) === c)
-        .sort((a, b) => (idxOf(a) < 0 ? 99 : idxOf(a)) - (idxOf(b) < 0 ? 99 : idxOf(b)))])
-      .filter(([, arr]) => arr.length);
-    let html = `<div style="font-size:12px;font-weight:600;color:var(--ink-hi);margin:14px 0 4px;">
-      「${name}」动画清单 · 点行=后台大预览，▶=在桌宠上真机播放</div><table class="anim-map">
-      <tr><th>槽位</th><th>帧数</th><th>fps</th><th>单帧尺寸</th><th></th></tr>`;
-    // 彩蛋可禁用(persona.json disabledEggs):禁的不进待机彩蛋池、催睡不点名;
-    // 功能路由槽位(emo/touch/sleep/dance…)禁了动画就播不出来,不给按钮
-    const offEggs = data.persona.disabledEggs || [];
-    for (const [g, arr] of GROUPS) {
-      html += `<tr><td colspan="5" style="color:var(--accent);font-weight:600;padding-top:8px;">${g}</td></tr>`;
-      for (const k of arr) {
-        const m = man[k];
-        const off = offEggs.includes(k);
-        html += `<tr data-anim="${k}" data-pid="${id}" ${off ? 'style="opacity:0.45;"' : ''}>
-          <td>${k}${k === 'idle' ? ' <span class="tag-ok">●必传</span>' : ''}${off ? ' <span class="tag-miss">已禁用</span>' : ''}</td>
-          <td>${m.frames}</td><td>${(+m.fps).toFixed(1)}</td><td>${m.fw}×${m.fh}</td>
-          <td><button class="live-btn" data-live="${k}" title="在桌宠上播放">▶ 桌宠</button>${
-            k.startsWith('egg_') ? `<button class="live-btn" data-eggtoggle="${k}" title="禁用的彩蛋不进随机彩蛋池" style="margin-left:6px;">${off ? '启用' : '禁用'}</button>` : ''
-          }</td></tr>`;
-      }
-    }
-    html += '</table>';
-    // 特效清单
-    const fx = data.persona.fx || [];
-    html += `<div style="font-size:11px;color:var(--muted);margin-top:8px;">全屏特效:` +
-      (fx.length ? fx.map((f) => `<span class="tag-ok">[fx:${f}] ✓</span>`).join(' ')
-                 : '<span class="tag-miss">无(由码绘寒潮兜底)</span>') + '</div>';
-    // 情绪协议:标准情绪 ∪ 包自定义(persona.json emoDesc);这段会拼进系统提示词
-    // (与 app 的 capabilityAddendum 同一套规则，此处只读展示)
+  /* 情绪协议(拼进系统提示词的词表):从原「动画清单」页搬来,现在挂在动画工坊底部。
+   * 标准情绪 ∪ 包自定义(persona.json emoDesc),只列包能真演出来的那些
+   * ——与 app 侧 capabilityAddendum 同一套规则 */
+  emoProtocolHtml(man, persona) {
     const STD_EMO = {
       happy: '被夸/顺心/愉悦', surprise: '被吓到/意外', angry: '不满/被冒犯/用户摸鱼被抓',
       sad: '遗憾/共情低落/失望', speechless: '无奈/轻微吐槽', gloomy: '低气压/阴阳怪气',
       blackline: '尴尬到极点/无语住',
     };
-    const packDesc = data.persona.emoDesc || {};
-    const aliases = data.persona.emoAliases || {};
-    // 只列包能真演出来的情绪(有 emo_ 同名动画或别名映射到包内动画)——
-    // 包没有的表情不该有协议槽位(用户拍板),词表侧 capabilityAddendum 同规则
+    const packDesc = persona.emoDesc || {};
+    const aliases = persona.emoAliases || {};
     const canPerform = (e) => !!(man['emo_' + e] || (aliases[e] && man[aliases[e]]));
     const emoNames = [...new Set([...Object.keys(STD_EMO), ...Object.keys(packDesc)])].filter(canPerform);
-    // 情绪协议可编辑:场合=emoDesc,表现=emoAliases(下拉重映射),保存写回 persona.json
     const animOpts = (sel) => ['<option value="">自动(emo_同名动画或通用兜底)</option>']
       .concat(Object.keys(man).map((k) => `<option value="${k}" ${sel === k ? 'selected' : ''}>${k}</option>`)).join('');
-    html += `<div style="font-size:12px;font-weight:600;color:var(--ink-hi);margin:14px 0 4px;">
+    let html = `<div style="font-size:12px;font-weight:600;color:var(--ink-hi);margin:14px 0 4px;">
       情绪协议(拼进系统提示词的词表) · 场合与映射可编辑，改完点下方保存</div>
       <table class="anim-map"><tr><th style="width:110px;">[emo:标签]</th><th>使用场合(emoDesc)</th><th style="width:190px;">触发的动画(emoAliases)</th></tr>`;
     for (const e of emoNames) {
@@ -428,36 +375,19 @@ const PersonaUI = {
              placeholder="${STD_EMO[e] ? '默认:' + STD_EMO[e] : '描述该情绪的使用场合'}"></td>
         <td><select class="emo-map-sel" data-e="${e}">${animOpts(aliases[e] || '')}</select></td></tr>`;
     }
-    html += `</table>
+    return html + `</table>
       <div style="font-size:10.5px;color:var(--muted-2);margin-top:6px;line-height:1.7;">
       场合留空=用内置默认(标准情绪)/从词表移除(自定义情绪);映射选「自动」=播 emo_同名动画。
-      包里没有对应动画的情绪不在此列(也不会进词表)——要启用它,给包补 emo_动画或在 persona.json 的 emoAliases 里映射到既有动画。</div>
+      包里没有对应动画的情绪不在此列(也不会进词表)——要启用它,给包补 emo_动画,或在上面的槽位表里把某个 emo_ 槽位指到已有动画。</div>
       <button id="emo-save" style="margin-top:8px;padding:7px 20px;border-radius:10px;border:1px solid var(--accent-line);
         background:var(--accent-soft);color:var(--ink-hi);font-size:12px;cursor:pointer;">保存情绪协议(写回包)</button>
       <span id="emo-save-r" style="font-size:11px;color:var(--success);margin-left:8px;"></span>`;
-    det.innerHTML = html;
-    det.scrollIntoView({ behavior: 'smooth', block: 'start' }); // 清单在列表下方，不滚过去用户以为没反应
-    det.querySelectorAll('tr[data-anim]').forEach((tr) =>
-      tr.addEventListener('click', () => {
-        det.querySelectorAll('tr').forEach((x) => x.classList.remove('sel'));
-        tr.classList.add('sel');
-        this.playPreview(tr.dataset.pid, tr.dataset.anim, man[tr.dataset.anim]);
-      }));
-    det.querySelectorAll('.live-btn[data-live]').forEach((b) =>
-      b.addEventListener('click', (ev) => {
-        ev.stopPropagation(); // 别触发行点击的大预览
-        window.pet.personaPreviewAnim?.(b.dataset.live);
-      }));
-    // 彩蛋禁用/启用:写回包 persona.json(主进程广播 persona-refresh 热应用),重绘清单
-    det.querySelectorAll('[data-eggtoggle]').forEach((b) =>
-      b.addEventListener('click', async (ev) => {
-        ev.stopPropagation();
-        const k = b.dataset.eggtoggle;
-        const list = offEggs.includes(k) ? offEggs.filter((x) => x !== k) : [...offEggs, k];
-        await window.pet.personaSetMeta?.(id, { disabledEggs: list });
-        this.showAnims(id, name);
-      }));
-    document.getElementById('emo-save').addEventListener('click', async () => {
+  },
+  bindEmoProtocol(id) {
+    const det = document.getElementById('persona-detail');
+    const btn = document.getElementById('emo-save');
+    if (!btn) return;
+    btn.addEventListener('click', async () => {
       const emoDesc = {}, emoAliases = {};
       det.querySelectorAll('.emo-desc-in').forEach((i) => { if (i.value.trim()) emoDesc[i.dataset.e] = i.value.trim(); });
       det.querySelectorAll('.emo-map-sel').forEach((s) => { if (s.value) emoAliases[s.dataset.e] = s.value; });
@@ -510,7 +440,7 @@ document.getElementById('import-btn').addEventListener('click', async () => {
   btn.textContent = '导入中…';
   const r = await window.pet.personaImport();
   btn.textContent = '＋ 导入形象包(zip 或文件夹)';
-  if (r.ok) { await PersonaUI.refresh(); PersonaUI.showAnims(r.id, r.name); }
+  if (r.ok) { await PersonaUI.refresh(); PackStudio.show(r.id, r.name); }
   else if (r.err !== 'canceled') alert('导入失败:' + r.err);
 });
 /* ---- 新增人设:名字必填即可建包;性格选填(不填=运行时默认底稿) ---- */

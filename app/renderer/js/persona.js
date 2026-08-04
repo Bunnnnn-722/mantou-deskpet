@@ -12,15 +12,42 @@ const FEATURE_ANIMS = {
   nightSleep: ['sleep'],
   musicMode: ['dance_nod'],
 };
+// 切形象/改槽位映射后必须先解码完这几条,Player 才有得播
+const KEY_ANIMS = ['appear', 'idle', 'sleep', 'sleep_in', 'sleep_out', 'dance_nod'];
 const Persona = {
-  active: null,      // { id, name, emoAliases } 当前激活包，null=馒头
-  manifest: null,    // 包的动画 map(槽位 → 帧网格/锚点)
+  active: null,      // { id, name, emoAliases, slotMap } 当前激活包，null=馒头
+  raw: null,         // manifest.json 原样(动画名 → 帧网格/锚点)
+  manifest: null,    // 槽位解析后的视图(槽位 → {…帧网格, src:实际动画名})
+  /* 槽位 → 实际动画:persona.json 的 slotMap 允许把任意槽位指到包里另一条动画
+   * (想把彩蛋和摸鱼对调又不改文件名时用)。没配的槽位就是同名动画;
+   * 值为空串 = 这个槽位显式空着。解析结果带 src,雪碧图按 src 取文件/缓存。 */
+  resolve() {
+    const raw = this.raw || {};
+    const map = this.active?.slotMap || {};
+    const out = {};
+    for (const slot of new Set([...Object.keys(raw), ...Object.keys(map)])) {
+      const src = slot in map ? map[slot] : slot;
+      if (src && raw[src]) out[slot] = { ...raw[src], src };
+    }
+    this.manifest = out;
+  },
   /* 只刷新 persona.json 元数据(emoDesc/emoAliases/displayHeight 后台改完热应用),
    * 不动已解码的雪碧图;重排容器让尺寸类字段立即生效 */
   async reloadMeta() {
     if (!this.active) return;
     const data = await API.personaManifest(this.active.id);
-    if (data) { this.active = { id: this.active.id, ...data.persona }; this.manifest = data.manifest; }
+    if (data) {
+      const before = JSON.stringify(this.active.slotMap || {});
+      this.active = { id: this.active.id, ...data.persona };
+      this.raw = data.manifest;
+      this.resolve();
+      // 槽位映射改过:旧的解码缓存是按 src 存的，绑定变了得重新预载关键动画,
+      // 否则 idle 可能指向一张还没解码的图，画面会空一拍
+      if (JSON.stringify(this.active.slotMap || {}) !== before) {
+        Sprites.releaseAll();
+        await Promise.all(KEY_ANIMS.filter((k) => this.has(k)).map((k) => Sprites.preload(k)));
+      }
+    }
     Sprites.apply();
   },
   async refresh() {
@@ -35,16 +62,16 @@ const Persona = {
       Sprites.apply(); return;
     }
     this.active = { id, ...data.persona };
-    this.manifest = data.manifest;
+    this.raw = data.manifest;
+    this.resolve();
     // 关键动画全预载完再让 Player 决定播什么:否则 appear/idle 还没解码，
     // 空窗期会闪出码绘馒头(用户实测差评)
-    const KEY = ['appear', 'idle', 'sleep', 'sleep_in', 'sleep_out', 'dance_nod'];
-    await Promise.all(KEY.filter((k) => this.has(k)).map((k) => Sprites.preload(k)));
+    await Promise.all(KEY_ANIMS.filter((k) => this.has(k)).map((k) => Sprites.preload(k)));
     Sprites.apply();
   },
   unload() {
     Sprites.releaseAll();
-    this.active = null; this.manifest = null;
+    this.active = null; this.raw = null; this.manifest = null;
   },
   has(anim) { return !!(this.manifest && this.manifest[anim]); },
   // 彩蛋禁用(包 persona.json 可带 disabledEggs):禁的不进待机彩蛋池、
@@ -135,19 +162,24 @@ const Sprites = {
     $('pet-body').style.animationPlayState = on ? 'paused' : '';
     if (!on) this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
   },
+  /* 按槽位预载,但图片缓存键是实际动画名(src):两个槽位映射到同一条动画时
+   * 只解码一份(单条雪碧图解码后可达 ~180MB,不能重复占) */
   async preload(name) {
-    if (this.images[name] || this.decoding[name] || !Persona.has(name)) return;
-    this.decoding[name] = (async () => {
-      const url = await API.personaFile(Persona.active.id, name + '.webp');
+    const src = Persona.manifest?.[name]?.src;
+    if (!src || this.images[src] || this.decoding[src]) return;
+    this.decoding[src] = (async () => {
+      const url = await API.personaFile(Persona.active.id, src + '.webp');
       if (!url) return;
       const img = new Image();
       img.src = url;
       await img.decode().catch(() => {});
-      if (img.width) this.images[name] = img;
+      if (img.width) this.images[src] = img;
     })();
-    await this.decoding[name];
-    delete this.decoding[name];
+    await this.decoding[src];
+    delete this.decoding[src];
   },
+  // 这个槽位的雪碧图解码好了没(缓存按实际动画名存,调用方只认槽位)
+  ready(slot) { const s = Persona.manifest?.[slot]?.src; return !!(s && this.images[s]); },
   releaseAll() {
     this.images = {}; this.decoding = {};
     if (this.ctx) this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
@@ -159,7 +191,7 @@ const Sprites = {
    * 过渡段渐变、循环段恒定,边界零跳变,呼吸等帧内形变原样保留 */
   draw(name, frame) {
     const m = Persona.manifest?.[name];
-    const img = this.images[name];
+    const img = m && this.images[m.src];
     if (!m || !img) return;
     const { cols, fw, fh, dx = 0, dy = 0, canvasW, canvasH, fit } = m;
     if (this.canvas.width !== canvasW) { this.canvas.width = canvasW; this.canvas.height = canvasH; }
