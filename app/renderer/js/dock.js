@@ -24,16 +24,33 @@ const Dock = {
 
   tab() { return document.getElementById('dock-tab'); },
 
-  /* 有专属动画就播它,没有就退回 CSS 滑动。返回这段过场要占多久(ms) */
+  /* 有专属动画就播它,没有就退回 CSS 滑动。返回 {ms, anim, fps}(anim=null 表示走的 CSS) */
   playOrSlide(anim, slideClass) {
     const w = $('pet-wrapper');
     if (Persona.active && Persona.has(anim)) {
       const m = Persona.manifest[anim];
+      const fps = Math.max(1, +m.fps);
       Player.play(anim, { loop: false, prio: PRIORITY.emo });
-      return Math.round(m.frames / Math.max(1, +m.fps) * 1000);
+      return { ms: Math.round(m.frames / fps * 1000), anim, fps };
     }
     w.classList.toggle('docking', slideClass === 'out');
-    return 340;   // 与 style.css 里 #pet-wrapper.docking 的 transition 对齐
+    return { ms: 340, anim: null, fps: 60 };   // 与 style.css 里 .docking 的 transition 对齐
+  },
+
+  /* 等这段过场走完。不能纯掐表:Player 播完非循环动画会自己回落 idle,
+   * 一旦它先落地,屏幕上会闪出一整帧完整人物再被藏掉——用户实测"人飘出去了
+   * 还在外面闪一下"。所以两头都盯:动画一被换掉就立刻返回;掐表兜底并提前
+   * 两帧(dock_out 末尾本来就是空白帧,早收两帧看不出来)。 */
+  waitPass({ ms, anim, fps }) {
+    if (!anim) return new Promise((r) => setTimeout(r, ms));
+    const deadline = performance.now() + Math.max(0, ms - 2000 / fps);
+    return new Promise((res) => {
+      const tick = () => {
+        if (Player.cur?.name !== anim || performance.now() >= deadline) return res();
+        requestAnimationFrame(tick);
+      };
+      requestAnimationFrame(tick);
+    });
   },
 
   async out(from) {
@@ -44,8 +61,8 @@ const Dock = {
     document.querySelectorAll('.panel.show').forEach((p) => p.classList.remove('show'));
     $('hover-btns').classList.remove('show');
     $('todo-banner')?.classList.remove('show');
-    const wait = this.playOrSlide('dock_out', 'out');
-    await new Promise((r) => setTimeout(r, wait));
+    const pass = this.playOrSlide('dock_out', 'out');
+    await this.waitPass(pass);
     w.style.visibility = 'hidden';
     w.classList.remove('docking');
     this.docked = true;
@@ -76,8 +93,11 @@ const Dock = {
       w.style.left = (window.innerWidth - petW - 24) + 'px';
       w.style.right = 'auto';
     }
+    /* 先让 Player 切到 dock_in 再显形:反过来的话,显形那一刻画布上还是
+     * idle 的帧,会"啪"地弹出一整个人物,而不是从画外滑进来 */
+    const pass = this.playOrSlide('dock_in', 'in');
+    if (pass.anim) await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
     w.style.visibility = '';
-    this.playOrSlide('dock_in', 'in');
     this.docked = false;
     this.busy = false;
   },

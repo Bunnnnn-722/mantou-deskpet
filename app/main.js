@@ -602,6 +602,16 @@ ipcMain.handle('persona-write-anim', (_e, { id, slot, dataUrl, entry }) => {
       if (!Number.isFinite(v)) return { ok: false, err: `manifest 缺字段 ${k}` };
       ent[k] = k === 'fps' ? v : Math.round(v);
     }
+    // 尺寸对齐参数(工坊按人物框算好带过来):六个数,渲染端逐帧插值用
+    if (entry.fit && typeof entry.fit === 'object') {
+      const f = {};
+      for (const k of ['s0', 's1', 'x0', 'x1', 'y0', 'y1']) {
+        const v = +entry.fit[k];
+        if (!Number.isFinite(v)) { f.bad = 1; break; }
+        f[k] = Math.round(v * 1000) / 1000;
+      }
+      if (!f.bad) ent.fit = f;
+    }
     fs.writeFileSync(path.join(dir, slot + '.webp'), Buffer.from(m[1], 'base64'));
     man[slot] = ent;
     fs.writeFileSync(manPath, JSON.stringify(man, null, 1));

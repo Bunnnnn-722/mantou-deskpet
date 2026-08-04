@@ -365,7 +365,7 @@ const PackPipe = {
         frames: cropped.length, cols: this.COLS, fw: box.fw, fh: box.fh,
         fps, dx: box.x0, dy: box.y0, canvasW: frames[0].width, canvasH: frames[0].height,
       };
-      return { dataUrl, entry, firstFrame: frames[0], report };
+      return { dataUrl, entry, firstFrame: frames[0], lastFrame: frames[frames.length - 1], report };
     } finally { URL.revokeObjectURL(url); }
   },
 
@@ -392,6 +392,43 @@ const PackPipe = {
     const a = grab(0), b = grab(Math.max(0, m.frames - 1));
     img.src = '';                      // 早点松开解码后的位图(单张可达上百 MB)
     return this.frameDiff(a, b, 1);
+  },
+
+  /* 拿哪一帧代表"人物的标准姿势":大多数动画是首帧,但首帧是空白幕的那几条
+   * (开机浮现、从边缘滑出)得看尾帧——人物是最后才进画面的。
+   * 首帧一致性校验和尺寸对齐都按这张表取帧。 */
+  REF_FRAME: { appear: 'last', dock_in: 'last' },
+  refFrameOf(slot, r) { return this.REF_FRAME[slot] === 'last' ? r.lastFrame : r.firstFrame; },
+
+  /* 人物外框(alpha>32 的包围盒,公共画布坐标) */
+  alphaBox(img) {
+    const { data: d, width: w, height: h } = img;
+    let x0 = w, y0 = h, x1 = -1, y1 = -1;
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        if (d[(y * w + x) * 4 + 3] > 32) {
+          if (x < x0) x0 = x; if (x > x1) x1 = x;
+          if (y < y0) y0 = y; if (y > y1) y1 = y;
+        }
+      }
+    }
+    return x1 < 0 ? null : { x0, y0, x1, y1, w: x1 - x0 + 1, h: y1 - y0 + 1 };
+  },
+
+  /* 尺寸对齐:把新动画的人物框按"高度对齐、底边对齐、水平居中对齐"贴到待机的框上。
+   * 不重采样像素,只算一组 fit 常量写进 manifest —— 渲染端 Sprites.draw 本来就
+   * 支持 fit(素材批次间尺寸漂移的老方案),这里复用同一条路。
+   * 返回 null = 差得不到 2%,不值当写。 */
+  fitTo(refImg, idleImg, entry) {
+    const B = this.alphaBox(refImg), A = this.alphaBox(idleImg);
+    if (!A || !B || !B.h) return null;
+    const s = A.h / B.h;
+    const dx = entry.dx || 0, dy = entry.dy || 0;
+    const X = (A.x0 + A.x1) / 2 - ((B.x0 + B.x1) / 2 - dx) * s;
+    const Y = A.y1 - (B.y1 - dy) * s;
+    if (Math.abs(s - 1) < 0.02 && Math.abs(X - dx) < 2 && Math.abs(Y - dy) < 2) return null;
+    const R = (v) => Math.round(v * 1000) / 1000;
+    return { fit: { s0: R(s), s1: R(s), x0: R(X), x1: R(X), y0: R(Y), y1: R(Y) }, scale: s };
   },
 
   /* 首帧一致性:新动画首帧 vs 待机首帧(公共画布坐标系,64 格采样)。
@@ -809,23 +846,34 @@ const PackStudio = {
       const map = { ...(cur?.persona?.slotMap || {}) };
       if (slot in map) { delete map[slot]; await window.pet.personaSetMeta?.(id, { slotMap: map }); }
       delete (this._ends || {})[id + ':' + slot];   // 重传了,首尾残差得重量
-      // 首帧一致性校验:与待机首帧比对,差太多提醒(切动画会跳变)
-      let warn = '';
-      if (slot !== 'idle' && slot !== 'appear') {
+      /* 与待机比对 + 尺寸对齐。取哪一帧看 REF_FRAME:开机浮现/从边缘滑出的首帧
+       * 是空白幕,拿首帧去比会 100% 报"差异偏大"(用户实测),得看尾帧。 */
+      let warn = '', fitNote = '';
+      if (slot !== 'idle') {
         const idleFirst = await this.idleFirstFrame(id);
-        if (idleFirst) {
-          const c = PackPipe.compareFirstFrames(r.firstFrame, idleFirst);
-          if (!c.ok) warn = `⚠ 首帧与待机差异偏大(轮廓重合 ${(c.iou * 100).toFixed(0)}%`
+        const ref = PackPipe.refFrameOf(slot, r);
+        if (idleFirst && ref) {
+          const which = PackPipe.REF_FRAME[slot] === 'last' ? '尾帧' : '首帧';
+          const c = PackPipe.compareFirstFrames(ref, idleFirst);
+          if (!c.ok) warn = `⚠ ${which}与待机差异偏大(轮廓重合 ${(c.iou * 100).toFixed(0)}%`
             + (c.iou > 0 ? `,色差 ${c.colorDiff.toFixed(0)}` : '')
-            + `),切换动画时可能跳变——建议生成视频时都用同一张立绘做首帧`;
+            + `),切换动画时可能跳变——建议生成视频时都用同一张立绘`;
+          // 人物大小对不上(不同批次生成的常见病):按人物框自动缩放对齐
+          const f = PackPipe.fitTo(ref, idleFirst, r.entry);
+          if (f) {
+            r.entry.fit = f.fit;
+            await window.pet.personaWriteAnim(id, slot, r.dataUrl, r.entry);
+            fitNote = `已按待机的人物框自动对齐(${which}比对,缩放 ${(f.scale * 100).toFixed(1)}%)`;
+          }
         }
       }
       await PersonaUI.refresh();
       await this.show(id, name);
       const row2 = det.querySelector(`tr[data-slot="${slot}"] .ps-status`);
       if (row2) {
-        row2.innerHTML += `<div style="font-size:10px;color:var(--muted-2);">${r.report.loopPlan}</div>`
-          + (warn ? `<div style="font-size:10px;color:var(--warn);">${warn}</div>` : '');
+        row2.innerHTML += `<div class="ps-note">${r.report.loopPlan}</div>`
+          + (fitNote ? `<div class="ps-note" style="color:var(--success);">${fitNote}</div>` : '')
+          + (warn ? `<div class="ps-note" style="color:var(--warn);">${warn}</div>` : '');
       }
       const fresh = await window.pet.personaManifest(id);
       if (fresh?.manifest?.[slot]) PersonaUI.playPreview(id, slot, fresh.manifest[slot]);

@@ -111,7 +111,8 @@ html.dark .emo-desc-in,html.dark .emo-map-sel,html.dark .ps-map{background:rgba(
    会折成三行,整张表被撑得又高又散(用户实测辣眼) */
 .anim-map td{vertical-align:middle;}
 .ps-status{white-space:nowrap;}
-.ps-status .ps-check{white-space:normal;}   /* 只有黄字提醒允许折行 */
+.ps-status .ps-check,.ps-status .ps-note{white-space:normal;font-size:10px;color:var(--muted-2);
+  max-width:230px;line-height:1.5;margin-top:2px;}   /* 提醒类文字允许折行,别把表格顶散 */
 .ps-acts{white-space:nowrap;}
 .ps-map:focus{border-color:var(--accent-line);}
 /* 命中区编辑器:待机首帧上拉框选点击区(坐标=帧内百分比,与 Persona.hitZone 同约定) */
@@ -444,7 +445,15 @@ const PersonaUI = {
     this._pv.timer = setInterval(() => {
       const col = f % m.cols, row = Math.floor(f / m.cols);
       ctx.clearRect(0, 0, cv.width, cv.height);
-      ctx.drawImage(img, col * m.fw, row * m.fh, m.fw, m.fh, m.dx || 0, m.dy || 0, m.fw, m.fh);
+      // 跟 Sprites.draw 一致地吃 fit,否则预览的大小/落点和真机对不上
+      if (m.fit) {
+        const k = m.frames > 1 ? f / (m.frames - 1) : 0;
+        const sc = m.fit.s0 + (m.fit.s1 - m.fit.s0) * k;
+        ctx.drawImage(img, col * m.fw, row * m.fh, m.fw, m.fh,
+          m.fit.x0 + (m.fit.x1 - m.fit.x0) * k, m.fit.y0 + (m.fit.y1 - m.fit.y0) * k, m.fw * sc, m.fh * sc);
+      } else {
+        ctx.drawImage(img, col * m.fw, row * m.fh, m.fw, m.fh, m.dx || 0, m.dy || 0, m.fw, m.fh);
+      }
       f = (f + 1) % m.frames;
     }, 1000 / m.fps);
   },
