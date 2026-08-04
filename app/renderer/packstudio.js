@@ -495,6 +495,7 @@ const PackStudio = {
     return `<button class="live-btn" data-up="${s.key}">${m ? '重新上传' : '上传视频'}</button>`
       + (m ? `<button class="live-btn" data-pv="${s.key}" style="margin-left:6px;">预览</button>
              <button class="live-btn" data-live="${s.key}" style="margin-left:6px;" title="在桌宠上真机播放">▶ 桌宠</button>
+             <button class="live-btn" data-align="${s.key}" style="margin-left:6px;" title="按人物外框把大小/落点贴齐待机">对齐待机</button>
              <button class="live-btn" data-del="${s.key}" style="margin-left:6px;">删除</button>` : '')
       + (s.key.startsWith('egg_') && m ? `<button class="live-btn" data-eggtoggle="${s.key}" style="margin-left:6px;"
           title="禁用的彩蛋不进待机随机池">${off ? '启用' : '禁用'}</button>` : '')
