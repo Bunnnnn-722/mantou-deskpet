@@ -20,7 +20,12 @@ const Persona = {
   manifest: null,    // 槽位解析后的视图(槽位 → {…帧网格, src:实际动画名})
   /* 槽位 → 实际动画:persona.json 的 slotMap 允许把任意槽位指到包里另一条动画
    * (想把彩蛋和摸鱼对调又不改文件名时用)。没配的槽位就是同名动画;
-   * 值为空串 = 这个槽位显式空着。解析结果带 src,雪碧图按 src 取文件/缓存。 */
+   * 值为空串 = 这个槽位显式空着。解析结果带 src,雪碧图按 src 取文件/缓存。
+   *
+   * 注意这里是拿 raw 的键当槽位在遍历:彩蛋/摸鱼在桌宠端是按前缀抽池子的
+   * (state-ui 扫 egg_、study 扫 slack_),包里叫 egg_frost 的动画不进任何目录槽位
+   * 也照样会被抽到——这是"彩蛋名随角色起"的设计,老包不配 slotMap 也能用。
+   * 要让某条动画彻底别播,就给它自己写一条 slotMap[key]='' (工坊的「停用」按钮)。 */
   resolve() {
     const raw = this.raw || {};
     const map = this.active?.slotMap || {};

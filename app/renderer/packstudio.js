@@ -433,6 +433,10 @@ const TRANSITION_SLOTS = ['appear', 'sleep_in', 'sleep_out', 'dock_out', 'dock_i
 const PackStudio = {
   busy: false,
 
+  // 带池子前缀的动画,不进任何槽位也会被桌宠随机抽到(彩蛋池/摸鱼池)
+  poolPrefixed(key) { return Object.values(CAT_POOL).some((p) => key.startsWith(p)); },
+  // 还有别的槽位指着它吗
+  usedBy(key) { return this.ctx.slots.some((s) => this.srcOf(s.key) === key); },
   /* 槽位 → 实际动画(persona.json 的 slotMap;没配就是同名) */
   srcOf(slot) { const m = this.ctx.map; return slot in m ? m[slot] : slot; },
   /* 目录槽位 + 用户自建槽位(persona.json extraSlots) */
@@ -502,8 +506,8 @@ const PackStudio = {
       直接在两行的下拉里互换即可,不用改文件名。上传视频会写进<b>本槽位同名</b>的动画并把映射复位。
       表情/点击/彩蛋/摸鱼在桌宠端都是按前缀抽的池子,想做几条就用分类下方的<b>「+ 新增槽位」</b>加。
       <b>动画预览窗在页面最底部</b>,上传/点预览后会自动滚过去。</div>
-      <table class="anim-map"><tr><th style="width:31%;">槽位</th><th style="width:22%;">用哪条动画</th>
-        <th>状态</th><th style="width:270px;"></th></tr>`;
+      <table class="anim-map"><tr><th>槽位</th><th style="width:218px;">用哪条动画</th>
+        <th style="width:236px;">状态</th><th style="width:358px;">操作</th></tr>`;
     for (const cat of CATS) {
       html += `<tr><td colspan="4" style="color:var(--accent);font-weight:600;padding-top:8px;">${cat}</td></tr>`;
       for (const s of this.ctx.slots.filter((x) => x.cat === cat)) html += this.rowHtml(s);
@@ -517,12 +521,17 @@ const PackStudio = {
     }
     if (orphan.length) {
       html += `<tr><td colspan="4" style="color:var(--accent);font-weight:600;padding-top:8px;">
-        目录外的动画(没有槽位在用,可以在上面的下拉里指过去)</td></tr>`;
+        目录外的动画(没有槽位在用;egg_/slack_ 开头的除外——它们照样会被随机抽到)</td></tr>`;
       for (const k of orphan) {
         const m = this.ctx.man[k];
-        html += `<tr><td colspan="2"><span style="font-family:ui-monospace,monospace;">${k}</span></td>
+        const off = this.ctx.map[k] === '';
+        const live = this.poolPrefixed(k) && !off;
+        html += `<tr><td colspan="2"><span style="font-family:ui-monospace,monospace;">${k}</span>
+            ${live ? ' <span class="tag-ok">仍会被随机抽到</span>'
+                   : (off ? ' <span class="tag-miss">已停用</span>' : '')}</td>
           <td><span class="tag-ok">✓ ${m.frames} 帧 @ ${(+m.fps).toFixed(0)}fps</span></td>
           <td><button class="live-btn" data-pvraw="${k}">预览</button>
+              ${this.poolPrefixed(k) ? `<button class="live-btn" data-offraw="${k}" style="margin-left:6px;">${off ? '启用' : '停用'}</button>` : ''}
               <button class="live-btn" data-delraw="${k}" style="margin-left:6px;">删除</button></td></tr>`;
       }
     }
@@ -563,15 +572,28 @@ const PackStudio = {
       const sel = ev.target.closest('.ps-map');
       if (!sel) return;
       const slot = sel.dataset.slot;
+      const prev = this.srcOf(slot);                       // 换之前这个槽位用的是哪条
       if (sel.value === slot) delete this.ctx.map[slot]; else this.ctx.map[slot] = sel.value;
-      if (await this.saveMap()) this.say(`✓ 「${slot}」已指向 ${sel.value || '(空)'},桌宠已热应用`);
-      this.refreshRow(slot);            // ← 状态/按钮跟着换,否则还写着「未上传」
-      this.checkEnds();
+      /* 被换下来的那条:如果已经没有任何槽位在用,而它又带池子前缀(egg_/slack_),
+       * 桌宠端还会照样把它随机抽出来播——用户的本意明明是「把它从彩蛋里拿掉」。
+       * 顺手给它写一条 slotMap[key]='' 停用掉,并在状态栏说清楚(目录外那组可一键恢复)。*/
+      let alsoOff = '';
+      if (prev && prev !== sel.value && this.poolPrefixed(prev)
+          && !this.usedBy(prev) && !(prev in this.ctx.map)) {
+        this.ctx.map[prev] = '';
+        alsoOff = `;「${prev}」没有槽位在用了,已停用(目录外那组可恢复)`;
+      }
+      const saved = await this.saveMap();
+      // 顺手停用了别的动画就得整页重绘(目录外那组要换成「已停用/启用」),
+      // 重绘会清空状态栏 → 提示必须放在重绘之后说
+      if (alsoOff) await this.show(this.ctx.id, this.ctx.name);
+      else { this.refreshRow(slot); this.checkEnds(); }
+      if (saved) this.say(`✓ 「${slot}」已指向 ${sel.value || '(空)'}${alsoOff}`);
     };
     det.onclick = async (ev) => {
       const b = ev.target.closest('button[data-up],button[data-pv],button[data-live],button[data-del],'
         + 'button[data-eggtoggle],button[data-rmslot],button[data-pvraw],button[data-delraw],'
-        + 'button[data-addslot],button[data-hitzone]');
+        + 'button[data-addslot],button[data-hitzone],button[data-offraw]');
       if (!b) return;
       const d = b.dataset;
       const { id, name } = this.ctx;
@@ -608,6 +630,11 @@ const PackStudio = {
         delete this.ctx.map[d.rmslot];
         await window.pet.personaSetMeta?.(id, { extraSlots: extra, slotMap: this.ctx.map });
         this.show(id, name);
+      } else if (d.offraw) {
+        const k = d.offraw;
+        if (this.ctx.map[k] === '') delete this.ctx.map[k]; else this.ctx.map[k] = '';
+        await this.saveMap();
+        await this.show(id, name);
       } else if (d.hitzone) {
         this.hitZoneEditor();
       }
