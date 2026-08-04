@@ -400,13 +400,14 @@ const PackPipe = {
   REF_FRAME: { appear: 'last', dock_in: 'last' },
   refFrameOf(slot, r) { return this.REF_FRAME[slot] === 'last' ? r.lastFrame : r.firstFrame; },
 
-  /* 人物外框(alpha>32 的包围盒,公共画布坐标) */
-  alphaBox(img) {
+  /* 人物外框(公共画布坐标)。默认按"不透明区域"取(alpha>128):角色身上的
+   * 雾气/冰晶/光晕都是半透明的,按 alpha>32 取会把框撑大一圈,对齐就歪了 */
+  alphaBox(img, thr = 128) {
     const { data: d, width: w, height: h } = img;
     let x0 = w, y0 = h, x1 = -1, y1 = -1;
     for (let y = 0; y < h; y++) {
       for (let x = 0; x < w; x++) {
-        if (d[(y * w + x) * 4 + 3] > 32) {
+        if (d[(y * w + x) * 4 + 3] > thr) {
           if (x < x0) x0 = x; if (x > x1) x1 = x;
           if (y < y0) y0 = y; if (y > y1) y1 = y;
         }
@@ -419,14 +420,16 @@ const PackPipe = {
    * 不重采样像素,只算一组 fit 常量写进 manifest —— 渲染端 Sprites.draw 本来就
    * 支持 fit(素材批次间尺寸漂移的老方案),这里复用同一条路。
    * 返回 null = 差得不到 2%,不值当写。 */
-  fitTo(refImg, idleImg, entry) {
+  fitTo(refImg, idleImg, entry, sameCanvas = true) {
     const B = this.alphaBox(refImg), A = this.alphaBox(idleImg);
     if (!A || !B || !B.h) return null;
     const s = A.h / B.h;
     const dx = entry.dx || 0, dy = entry.dy || 0;
     const X = (A.x0 + A.x1) / 2 - ((B.x0 + B.x1) / 2 - dx) * s;
     const Y = A.y1 - (B.y1 - dy) * s;
-    if (Math.abs(s - 1) < 0.02 && Math.abs(X - dx) < 2 && Math.abs(Y - dy) < 2) return null;
+    // 画幅本来就跟待机不一样时一定要写(渲染端只能按高度比粗兜底);
+    // 画幅相同且差不到 2% 才值得省下这组数
+    if (sameCanvas && Math.abs(s - 1) < 0.02 && Math.abs(X - dx) < 2 && Math.abs(Y - dy) < 2) return null;
     const R = (v) => Math.round(v * 1000) / 1000;
     return { fit: { s0: R(s), s1: R(s), x0: R(X), x1: R(X), y0: R(Y), y1: R(Y) }, scale: s };
   },
@@ -573,6 +576,10 @@ const PackStudio = {
       }
     }
     html += `</table>
+      <div style="margin-top:8px;">
+        <button class="live-btn" id="ps-align-all" title="逐条按人物外框贴齐待机,大小/落点统一">全部对齐到待机</button>
+        <span style="font-size:10.5px;color:var(--muted-2);margin-left:8px;">源视频画幅不一致时人物会一大一小,点这个统一</span>
+      </div>
       <div id="ps-map-r" style="font-size:11px;color:var(--success);margin-top:6px;min-height:15px;"></div>
       <div id="ps-hitzone"></div>
       <input type="file" id="ps-file" accept="video/mp4,video/webm,video/quicktime" style="display:none;">`;
@@ -630,7 +637,7 @@ const PackStudio = {
     det.onclick = async (ev) => {
       const b = ev.target.closest('button[data-up],button[data-pv],button[data-live],button[data-del],'
         + 'button[data-eggtoggle],button[data-rmslot],button[data-pvraw],button[data-delraw],'
-        + 'button[data-addslot],button[data-hitzone],button[data-offraw]');
+        + 'button[data-addslot],button[data-hitzone],button[data-offraw],button[data-align]');
       if (!b) return;
       const d = b.dataset;
       const { id, name } = this.ctx;
@@ -667,6 +674,9 @@ const PackStudio = {
         delete this.ctx.map[d.rmslot];
         await window.pet.personaSetMeta?.(id, { extraSlots: extra, slotMap: this.ctx.map });
         this.show(id, name);
+      } else if (d.align) {
+        const r = await this.alignToIdle(id, d.align);
+        this.say(r ? `✓ 「${d.align}」已贴齐待机(缩放 ${(r.scale * 100).toFixed(1)}%)` : `「${d.align}」本来就是齐的`);
       } else if (d.offraw) {
         const k = d.offraw;
         if (this.ctx.map[k] === '') delete this.ctx.map[k]; else this.ctx.map[k] = '';
@@ -883,21 +893,41 @@ const PackStudio = {
     } finally { this.busy = false; }
   },
 
-  /* 取待机动画首帧(公共画布坐标系 ImageData),没有待机返回 null */
-  async idleFirstFrame(id) {
+  /* 从已落盘的雪碧图里取某一帧,还原到它自己的公共画布(ImageData) */
+  async frameOf(id, key, which = 'first') {
     const data = await window.pet.personaManifest(id);
-    const m = data?.manifest?.idle;
+    const m = data?.manifest?.[key];
     if (!m) return null;
-    const url = await window.pet.personaFile(id, 'idle.webp');
+    const url = await window.pet.personaFile(id, key + '.webp');
     if (!url) return null;
     const img = new Image();
     // onload 而非 decode():大尺寸雪碧图 decode() 在部分 Chromium 环境会挂死(实测)
     await new Promise((res) => { img.onload = res; img.onerror = res; img.src = url; });
     if (!img.width) return null;
+    const i = which === 'last' ? m.frames - 1 : 0;
     const cv = document.createElement('canvas');
     cv.width = m.canvasW; cv.height = m.canvasH;
     const ctx = cv.getContext('2d', { willReadFrequently: true });
-    ctx.drawImage(img, 0, 0, m.fw, m.fh, m.dx || 0, m.dy || 0, m.fw, m.fh);
+    ctx.drawImage(img, (i % m.cols) * m.fw, Math.floor(i / m.cols) * m.fh, m.fw, m.fh,
+      m.dx || 0, m.dy || 0, m.fw, m.fh);
     return ctx.getImageData(0, 0, cv.width, cv.height);
+  },
+  idleFirstFrame(id) { return this.frameOf(id, 'idle', 'first'); },
+
+  /* 事后对齐:拿已落盘的雪碧图现算 fit,不用重传。
+   * 传完才发现人物大小对不上、或者是旧版本传的包,都走这里补救。 */
+  async alignToIdle(id, slot) {
+    const data = await window.pet.personaManifest(id);
+    const key = this.srcOf(slot);
+    const m = data?.manifest?.[key], mi = data?.manifest?.idle;
+    if (!m || !mi || key === 'idle') return null;
+    const which = PackPipe.REF_FRAME[slot] === 'last' ? 'last' : 'first';
+    const ref = await this.frameOf(id, key, which);
+    const idleFirst = await this.frameOf(id, 'idle', 'first');
+    if (!ref || !idleFirst) return null;
+    const same = m.canvasW === mi.canvasW && m.canvasH === mi.canvasH;
+    const f = PackPipe.fitTo(ref, idleFirst, m, same);
+    await window.pet.personaSetFit?.(id, key, f ? f.fit : null);
+    return f;
   },
 };

@@ -79,6 +79,13 @@ const Persona = {
     this.active = null; this.raw = null; this.manifest = null;
   },
   has(anim) { return !!(this.manifest && this.manifest[anim]); },
+  /* 基准画布 = 待机那条的画布。每条动画的 canvasW 是各自源视频算出来的,
+   * 源视频画幅不一样(比如贴边那条不是 3:4)时会大小不一——统一按待机的画布画,
+   * 差异交给 fit 去校正,否则同一个人在不同动画里会一会儿大一会儿小(用户实测) */
+  baseCanvas() {
+    const m = this.manifest?.idle || Object.values(this.manifest || {})[0];
+    return { w: m?.canvasW || 472, h: m?.canvasH || 630 };
+  },
   // 彩蛋禁用(包 persona.json 可带 disabledEggs):禁的不进待机彩蛋池、
   // 催睡不点名。只对 egg_ 槽位生效——功能路由槽位禁了动画就播不出来
   eggEnabled(k) { return !(this.active?.disabledEggs || []).includes(k); },
@@ -198,8 +205,17 @@ const Sprites = {
     const m = Persona.manifest?.[name];
     const img = m && this.images[m.src];
     if (!m || !img) return;
-    const { cols, fw, fh, dx = 0, dy = 0, canvasW, canvasH, fit } = m;
-    if (this.canvas.width !== canvasW) { this.canvas.width = canvasW; this.canvas.height = canvasH; }
+    const { cols, fw, fh, dx = 0, dy = 0, canvasW, canvasH } = m;
+    let fit = m.fit;
+    const base = Persona.baseCanvas();
+    if (this.canvas.width !== base.w) { this.canvas.width = base.w; this.canvas.height = base.h; }
+    // 没配 fit 但这条动画的画幅跟基准不一样:按高度比缩放 + 水平居中兜底,
+    // 至少不会把人物压扁/缩水(工坊里点「对齐到待机」能算出精确的 fit)
+    if (!fit && (canvasW !== base.w || canvasH !== base.h)) {
+      const s2 = base.h / (canvasH || base.h);
+      const X = (base.w - canvasW * s2) / 2 + dx * s2;
+      fit = { s0: s2, s1: s2, x0: X, x1: X, y0: dy * s2, y1: dy * s2 };
+    }
     const col = frame % cols, row = Math.floor(frame / cols);
     this.ctx.clearRect(0, 0, canvasW, canvasH);
     // 可选 tone={b0,b1,sa0,sa1}:同一套首末帧插值做色彩校正(亮度/饱和度)——

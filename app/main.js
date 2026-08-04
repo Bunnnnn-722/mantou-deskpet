@@ -620,6 +620,30 @@ ipcMain.handle('persona-write-anim', (_e, { id, slot, dataUrl, entry }) => {
   } catch (e) { return { ok: false, err: String(e.message || e).slice(0, 120) }; }
 });
 
+/* 只改某条动画的尺寸对齐参数(工坊「对齐到待机」用):不重传雪碧图,
+ * 只往 manifest 里写/删这一组 fit */
+ipcMain.handle('persona-set-fit', (_e, { id, anim, fit }) => {
+  try {
+    if (!/^[\w-]+$/.test(id) || !/^[a-z0-9_]{1,24}$/.test(anim || '')) return false;
+    const manPath = path.join(PERSONAS_DIR(), id, 'manifest.json');
+    const man = JSON.parse(fs.readFileSync(manPath, 'utf8'));
+    if (!man[anim]) return false;
+    if (!fit) delete man[anim].fit;
+    else {
+      const f = {};
+      for (const k of ['s0', 's1', 'x0', 'x1', 'y0', 'y1']) {
+        const v = +fit[k];
+        if (!Number.isFinite(v)) return false;
+        f[k] = Math.round(v * 1000) / 1000;
+      }
+      man[anim].fit = f;
+    }
+    fs.writeFileSync(manPath, JSON.stringify(man, null, 1));
+    if (win && !win.isDestroyed()) win.webContents.send('persona-refresh');
+    return true;
+  } catch { return false; }
+});
+
 ipcMain.handle('persona-remove-anim', (_e, { id, slot }) => {
   try {
     if (!/^[\w-]+$/.test(id) || !/^[a-z0-9_]{1,24}$/.test(slot || '')) return { ok: false, err: '参数非法' };
