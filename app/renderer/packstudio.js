@@ -426,8 +426,8 @@ const PackPipe = {
 
 /* 按前缀抽池子的分类:这几类的槽位数量不限,工坊给「+ 新增槽位」入口 */
 const CAT_POOL = { 表情: 'emo_', 点击: 'touch_', 彩蛋: 'egg_', 自习: 'slack_' };
-/* 过渡型槽位:首尾就该不一样(入睡=睁眼→闭眼,贴边=立绘→空白),校验方向与循环槽位相反 */
-const TRANSITION_SLOTS = ['sleep_in', 'sleep_out', 'dock_out', 'dock_in'];
+/* 过渡型槽位:首尾就该不一样(开机浮现/贴边=空白↔立绘,入睡/睡醒=睁眼↔闭眼),校验方向与循环槽位相反 */
+const TRANSITION_SLOTS = ['appear', 'sleep_in', 'sleep_out', 'dock_out', 'dock_in'];
 
 /* ================= 工坊 UI(挂在形象卡片「动画工坊」按钮上) ================= */
 const PackStudio = {
@@ -755,7 +755,7 @@ const PackStudio = {
       const trans = TRANSITION_SLOTS.includes(s.key);
       let msg = `首尾残差 ${d.toFixed(1)} ✓`, color = 'var(--muted-2)';
       if (trans && same) {
-        msg = `⚠ 首尾几乎一样(${d.toFixed(1)})——这是过渡动画,首尾就该不一样(入睡=睁眼→闭眼,贴边=立绘→空白),换一条`;
+        msg = `⚠ 首尾几乎一样(${d.toFixed(1)})——这是过渡动画,首尾就该不一样(开机浮现/贴边=空白↔立绘,入睡/睡醒=睁眼↔闭眼),换一条`;
         color = 'var(--warn)';
       } else if (!trans && s.loop !== false && !same) {
         msg = `⚠ 首尾差得多(${d.toFixed(1)})——循环播到接缝会跳,换一条首尾同姿势的`;

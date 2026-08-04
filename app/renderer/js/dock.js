@@ -58,6 +58,7 @@ const Dock = {
       const mid = r.bottom - 14 - petH / 2;
       t.style.top = Math.max(40, Math.min(window.innerHeight - 80, mid)) + 'px';
       t.classList.add('show');
+      refreshPassthrough();   // 把手可能正好冒在光标底下,不重算的话第一下点击会穿透
     }
     if (from === 'drag') S.lastActive = Date.now();
   },
@@ -66,6 +67,7 @@ const Dock = {
     if (!this.docked || this.busy) return;
     this.busy = true;
     this.tab()?.classList.remove('show');
+    refreshPassthrough();
     const w = $('pet-wrapper');
     // 贴边收起是"滑到屏幕外"，回来时先把人物放回右边缘再滑进画面
     const petW = document.getElementById('pet').offsetWidth || 168;

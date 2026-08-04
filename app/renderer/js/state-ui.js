@@ -126,18 +126,26 @@ function petBodyHit(clientX, clientY) {
 /* ---- 鼠标穿透管理:只有真正压在桌宠本体、或已展开的面板/按钮上时才
    接管鼠标;其余透明区一律穿透(旧版按 .interactive 整个矩形接管,
    #pet-wrapper 那 230×210 透明框把周围点击全挡了——实测踩到) ---- */
+// 不透明 UI 白名单:命中这些就整块接管鼠标(桌宠本体另走像素级判定)
+const PASSTHRU_UI = '.panel.show, #bubble.show, #hover-btns.show, #todo-banner.show, #dock-tab.show';
+let ptLast = { x: -1, y: -1 }, ptInside = false;
+/* 用最后一次鼠标位置重算一次接管状态。UI 是"凭空冒出来"的时候必须手动叫一下
+   ——比如贴边收起后把手正好出现在光标底下,没有 mousemove 就永远是穿透的,
+   第一下点击会直接落到桌面上(实测:点把手人出不来) */
+function refreshPassthrough() {
+  if (ptLast.x < 0) return;
+  const el = document.elementFromPoint(ptLast.x, ptLast.y);
+  let hit = false;
+  if (el) {
+    if (el.closest(PASSTHRU_UI)) hit = true;
+    else if (el.closest('#pet')) hit = petBodyHit(ptLast.x, ptLast.y);
+  }
+  if (hit !== ptInside) { ptInside = hit; API.setIgnore(!hit); }
+}
 function setupPassthrough() {
-  let inside = false;
   document.addEventListener('mousemove', (e) => {
-    const el = document.elementFromPoint(e.clientX, e.clientY);
-    let hit = false;
-    if (el) {
-      // 不透明 UI(展开的面板/气泡/悬浮按钮/待办横条):整块接管
-      if (el.closest('.panel.show, #bubble.show, #hover-btns.show, #todo-banner.show')) hit = true;
-      // 桌宠本体:像素级判定,透明外框不算
-      else if (el.closest('#pet')) hit = petBodyHit(e.clientX, e.clientY);
-    }
-    if (hit !== inside) { inside = hit; API.setIgnore(!hit); }
+    ptLast = { x: e.clientX, y: e.clientY };
+    refreshPassthrough();
   });
 }
 

@@ -54,6 +54,8 @@
       await Dock.out('test');
       ok('贴边收起(人物隐藏+把手出现)',
         $('pet-wrapper').style.visibility === 'hidden' && $('dock-tab').classList.contains('show'));
+      // 把手必须在鼠标接管白名单里,否则点它会穿透到桌面(踩过:人出不来)
+      ok('把手不被鼠标穿透', !!$('dock-tab').closest(PASSTHRU_UI));
       await Dock.in();
       await waitFor(() => !Dock.docked, 2000);
       ok('从边缘滑出(人物回来+把手收掉)',
