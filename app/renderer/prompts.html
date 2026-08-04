@@ -357,14 +357,27 @@ const PersonaUI = {
     if (!data) return;
     const man = data.manifest;
     const det = document.getElementById('persona-detail');
-    // 槽位分组展示:情绪/触摸/彩蛋/睡眠/其他
-    const GROUPS = [
-      ['情绪(聊天 [emo:] 触发)', Object.keys(man).filter((k) => k.startsWith('emo_'))],
-      ['触摸(戳它时播)', Object.keys(man).filter((k) => k.startsWith('touch_'))],
-      ['彩蛋(随机/彩蛋触发)', Object.keys(man).filter((k) => k.startsWith('egg_'))],
-      ['睡眠', Object.keys(man).filter((k) => k.startsWith('sleep'))],
-      ['其他', Object.keys(man).filter((k) => !/^(emo_|touch_|egg_|sleep)/.test(k))],
-    ].filter(([, arr]) => arr.length);
+    // 槽位分组沿用工坊的目录(PACK_SLOTS.cat),两处保持同一套分类;
+    // 目录外的键(slack_fish 这类自定义槽位)按前缀归队,都不沾边才进「其他」
+    const CAT_HINT = {
+      表情: '表情(聊天 [emo:] 触发)', 点击: '点击(戳它时播)',
+      彩蛋: '彩蛋(待机随机播)', 自习: '摸鱼(自习时播)',
+    };
+    const idxOf = (k) => PACK_SLOTS.findIndex((x) => x.key === k);
+    const catOf = (k) => {
+      const s = PACK_SLOTS.find((x) => x.key === k);
+      if (s) return s.cat;
+      if (k.startsWith('slack_')) return '自习';
+      if (k.startsWith('emo_')) return '表情';
+      if (k.startsWith('touch_')) return '点击';
+      if (k.startsWith('egg_')) return '彩蛋';
+      if (k.startsWith('sleep')) return '睡眠';
+      return '其他';
+    };
+    const GROUPS = [...new Set(PACK_SLOTS.map((s) => s.cat))].concat('其他')
+      .map((c) => [CAT_HINT[c] || c, Object.keys(man).filter((k) => catOf(k) === c)
+        .sort((a, b) => (idxOf(a) < 0 ? 99 : idxOf(a)) - (idxOf(b) < 0 ? 99 : idxOf(b)))])
+      .filter(([, arr]) => arr.length);
     let html = `<div style="font-size:12px;font-weight:600;color:var(--ink-hi);margin:14px 0 4px;">
       「${name}」动画清单 · 点行=后台大预览，▶=在桌宠上真机播放</div><table class="anim-map">
       <tr><th>槽位</th><th>帧数</th><th>fps</th><th>单帧尺寸</th><th></th></tr>`;
