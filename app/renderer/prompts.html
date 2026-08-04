@@ -93,7 +93,7 @@ html.dark .persona-card .perso-row button,html.dark .persona-card .size-row butt
 .emo-desc-in{width:100%;background:var(--field);border:1px solid var(--hairline);border-radius:7px;
   padding:4px 8px;font-size:11px;color:var(--ink);outline:none;box-sizing:border-box;}
 .emo-desc-in:focus{border-color:var(--accent-line);}
-.emo-map-sel{width:100%;background:var(--field);border:1px solid var(--hairline);border-radius:7px;
+.emo-map-sel,.ps-map{width:100%;background:var(--field);border:1px solid var(--hairline);border-radius:7px;
   padding:4px 6px;font-size:11px;color:var(--ink);outline:none;}
 /* 尺寸内联编辑器(样式必须走令牌进样式表:内联白底在黑曜模式下会顶着不变,踩过) */
 .size-row input{width:72px;padding:4px 7px;border:1px solid var(--hairline);border-radius:7px;
@@ -105,7 +105,15 @@ html.dark .persona-card .perso-row button,html.dark .persona-card .size-row butt
 .live-btn{font-size:10.5px;padding:2px 9px;border-radius:7px;border:1px solid var(--accent-line);
   background:none;color:var(--accent);cursor:pointer;white-space:nowrap;}
 .live-btn:hover{background:var(--accent-soft);}
-html.dark .emo-desc-in,html.dark .emo-map-sel{background:rgba(255,255,255,0.07);}
+html.dark .emo-desc-in,html.dark .emo-map-sel,html.dark .ps-map{background:rgba(255,255,255,0.07);}
+.ps-map{max-width:230px;}
+.ps-map:focus{border-color:var(--accent-line);}
+/* 命中区编辑器:待机首帧上拉框选点击区(坐标=帧内百分比,与 Persona.hitZone 同约定) */
+.hz-wrap{position:relative;display:inline-block;border:1px solid var(--hairline);
+  border-radius:10px;overflow:hidden;background:var(--field);cursor:crosshair;}
+.hz-box{position:absolute;border:1.5px solid var(--accent);background:var(--accent-soft);
+  font-size:10px;color:var(--ink-hi);pointer-events:none;}
+.hz-box b{position:absolute;left:2px;top:1px;font-weight:600;white-space:nowrap;}
 /* 调试日志条/大预览:浅色底换令牌感的暗底(内联硬编码白底在暗色下是亮灰条,实测辣眼) */
 .log-item{margin-bottom:8px;background:rgba(255,255,255,0.7);border:1px solid var(--hairline);
   border-radius:9px;padding:8px 11px;}

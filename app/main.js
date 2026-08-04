@@ -492,6 +492,36 @@ ipcMain.handle('persona-set-meta', (_e, { id, meta }) => {
       }
       if (Object.keys(out).length) j.slotMap = out; else delete j.slotMap;
     }
+    /* 自定义槽位 extraSlots:[{key,label,cat}]。表情/点击/彩蛋/摸鱼在桌宠端都是
+     * 按前缀抽的池子,所以用户想做十条摸鱼就该能加十个槽位;前缀由渲染层按分类补齐 */
+    if (meta && Array.isArray(meta.extraSlots)) {
+      const CATS = ['核心', '点击', '表情', '功能', '自习', '睡眠', '彩蛋'];
+      const seen = new Set();
+      const out = [];
+      for (const s of meta.extraSlots) {
+        if (!s || typeof s.key !== 'string' || !/^[a-z][a-z0-9_]{1,23}$/.test(s.key)) continue;
+        if (seen.has(s.key)) continue;
+        seen.add(s.key);
+        out.push({ key: s.key, label: String(s.label || s.key).slice(0, 20),
+                   cat: CATS.includes(s.cat) ? s.cat : '彩蛋' });
+      }
+      if (out.length) j.extraSlots = out; else delete j.extraSlots;
+    }
+    /* 点击命中区 hitZones:{zones:[{anim,part,x0,y0,x1,y1}],fallback:{anim,part}}
+     * 坐标是待机帧内的百分比(0~1),与渲染层 Persona.hitZone 同一约定 */
+    if (meta && meta.hitZones !== undefined) {
+      const num = (v) => Math.max(0, Math.min(1, +v || 0));
+      const one = (z) => (z && typeof z.anim === 'string' && /^[a-z0-9_]{1,24}$/.test(z.anim)
+        ? { anim: z.anim, part: String(z.part || '身体').slice(0, 12) } : null);
+      const hz = meta.hitZones;
+      const zones = Array.isArray(hz?.zones) ? hz.zones.map((z) => {
+        const b = one(z);
+        return b && { ...b, x0: num(z.x0), y0: num(z.y0), x1: num(z.x1), y1: num(z.y1) };
+      }).filter(Boolean) : [];
+      const fb = one(hz?.fallback);
+      if (zones.length || fb) j.hitZones = { zones, ...(fb ? { fallback: fb } : {}) };
+      else delete j.hitZones;
+    }
     fs.writeFileSync(pj, JSON.stringify(j, null, 1));
     if (win && !win.isDestroyed()) win.webContents.send('persona-refresh');
     return true;

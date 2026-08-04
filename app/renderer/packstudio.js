@@ -22,9 +22,12 @@ const PACK_SLOTS = [
   { key: 'emo_blackline', label: '表情·黑线', cat: '表情', loop: true, feature: '' },
   { key: 'dance_nod', label: '听歌点头', cat: '功能', loop: true, feature: '缺了「听歌点头」开关置灰' },
   { key: 'think', label: '思考中', cat: '功能', loop: true, feature: '缺了照样能研究/拆解,只是不播思考动画' },
-  { key: 'slack_daze', label: '摸鱼·神游', cat: '自习', loop: true, feature: '一条 slack_ 都没有(也没睡觉动画)时,它自习就不会摸鱼' },
-  { key: 'slack_play', label: '摸鱼·玩小物', cat: '自习', loop: true, feature: '' },
-  { key: 'busted', label: '摸鱼被抓包', cat: '自习', loop: true, feature: '' },
+  // 摸鱼是个池子:桌宠端自习时在所有 slack_ 前缀动画里随机抽,想做几条做几条
+  // (下面三条是提示词模板里给了成品的,不够就用分类下方的「+ 新增槽位」加)
+  { key: 'slack_fish', label: '摸鱼·接鱼', cat: '自习', loop: true, feature: '一条 slack_ 都没有(也没睡觉动画)时,它自习就不会摸鱼' },
+  { key: 'slack_bubble', label: '摸鱼·鱼形泡泡', cat: '自习', loop: true, feature: '' },
+  { key: 'slack_fishhalo', label: '摸鱼·小鱼绕头', cat: '自习', loop: true, feature: '' },
+  { key: 'busted', label: '摸鱼被抓包', cat: '自习', loop: true, feature: '被抓包时播;缺了用 surprise 表情顶' },
   { key: 'sleep_in', label: '入睡', cat: '睡眠', loop: false, feature: '' },
   { key: 'sleep', label: '睡觉循环', cat: '睡眠', loop: true, feature: '缺了「深夜睡觉」开关置灰' },
   { key: 'sleep_out', label: '睡醒', cat: '睡眠', loop: false, feature: '' },
@@ -418,63 +421,100 @@ const PackPipe = {
   },
 };
 
+/* 按前缀抽池子的分类:这几类的槽位数量不限,工坊给「+ 新增槽位」入口 */
+const CAT_POOL = { 表情: 'emo_', 点击: 'touch_', 彩蛋: 'egg_', 自习: 'slack_' };
+
 /* ================= 工坊 UI(挂在形象卡片「动画工坊」按钮上) ================= */
 const PackStudio = {
   busy: false,
 
   /* 槽位 → 实际动画(persona.json 的 slotMap;没配就是同名) */
-  srcOf(slot, map) { return slot in map ? map[slot] : slot; },
+  srcOf(slot) { const m = this.ctx.map; return slot in m ? m[slot] : slot; },
+  /* 目录槽位 + 用户自建槽位(persona.json extraSlots) */
+  slotList(persona) {
+    const extra = (persona.extraSlots || []).map((s) => ({ ...s, loop: true, feature: '', custom: true }));
+    return PACK_SLOTS.concat(extra);
+  },
+
+  statusHtml(m) {
+    return (m ? `<span class="tag-ok">✓ ${m.frames} 帧 @ ${(+m.fps).toFixed(0)}fps</span>`
+              : '<span class="tag-miss">未上传</span>')
+      + '<div class="ps-check" style="font-size:10px;margin-top:2px;"></div>';
+  },
+  actsHtml(s, m) {
+    const off = this.ctx.offEggs.includes(s.key);
+    return `<button class="live-btn" data-up="${s.key}">${m ? '重新上传' : '上传视频'}</button>`
+      + (m ? `<button class="live-btn" data-pv="${s.key}" style="margin-left:6px;">预览</button>
+             <button class="live-btn" data-live="${s.key}" style="margin-left:6px;" title="在桌宠上真机播放">▶ 桌宠</button>
+             <button class="live-btn" data-del="${s.key}" style="margin-left:6px;">删除</button>` : '')
+      + (s.key.startsWith('egg_') && m ? `<button class="live-btn" data-eggtoggle="${s.key}" style="margin-left:6px;"
+          title="禁用的彩蛋不进待机随机池">${off ? '启用' : '禁用'}</button>` : '')
+      + (s.custom ? `<button class="live-btn" data-rmslot="${s.key}" style="margin-left:6px;">移除槽位</button>` : '');
+  },
+  optsHtml(sel) {
+    return ['<option value="">(空着 · 没有这个动作)</option>']
+      .concat(this.ctx.assets.map((k) => `<option value="${k}" ${sel === k ? 'selected' : ''}>${k}</option>`)).join('');
+  },
+  rowHtml(s) {
+    const cur = this.srcOf(s.key), m = this.ctx.man[cur];
+    return `<tr data-slot="${s.key}">
+      <td>${s.label} <span style="color:var(--muted-2);font-family:ui-monospace,monospace;">${s.key}</span>${s.must ? ' <span class="tag-ok">●必传</span>' : ''}${s.custom ? ' <span class="tag-ok">自建</span>' : ''}
+        ${s.feature ? `<div style="font-size:10px;color:var(--muted-2);">${s.feature}</div>` : ''}</td>
+      <td><select class="ps-map" data-slot="${s.key}">${this.optsHtml(m ? cur : '')}</select></td>
+      <td class="ps-status">${this.statusHtml(m)}</td>
+      <td class="ps-acts">${this.actsHtml(s, m)}</td></tr>`;
+  },
+  // 换完下拉/传完视频后就地刷新一行(状态+按钮都得跟着变,不然还显示「未上传」)
+  refreshRow(slot) {
+    const tr = document.querySelector(`#persona-detail tr[data-slot="${slot}"]`);
+    const s = this.ctx.slots.find((x) => x.key === slot);
+    if (!tr || !s) return;
+    const m = this.ctx.man[this.srcOf(slot)];
+    tr.querySelector('.ps-status').innerHTML = this.statusHtml(m);
+    tr.querySelector('.ps-acts').innerHTML = this.actsHtml(s, m);
+  },
 
   async show(id, name) {
     const det = document.getElementById('persona-detail');
     const data = await window.pet.personaManifest(id);
     if (!data) return;
-    const man = data.manifest;                 // 包里实际有的动画(文件名)
-    const map = { ...(data.persona.slotMap || {}) };
-    const offEggs = data.persona.disabledEggs || [];
-    const assets = Object.keys(man);
-    const CATS = [...new Set(PACK_SLOTS.map((s) => s.cat))];
-    // 目录外的动画(slack_fish 这类自定义名)也要能被选中,单列一组好让用户看见
-    const usedBySlot = new Set(PACK_SLOTS.map((s) => this.srcOf(s.key, map)));
-    const orphan = assets.filter((k) => !usedBySlot.has(k));
-
-    const opts = (sel) => ['<option value="">(空着 · 没有这个动作)</option>']
-      .concat(assets.map((k) => `<option value="${k}" ${sel === k ? 'selected' : ''}>${k}</option>`)).join('');
+    const persona = data.persona;
+    this.ctx = {
+      id, name, persona,
+      man: data.manifest,
+      map: { ...(persona.slotMap || {}) },
+      offEggs: persona.disabledEggs || [],
+      assets: Object.keys(data.manifest),
+      slots: this.slotList(persona),
+    };
+    const CATS = [...new Set(this.ctx.slots.map((s) => s.cat))];
+    const usedBySlot = new Set(this.ctx.slots.map((s) => this.srcOf(s.key)));
+    const orphan = this.ctx.assets.filter((k) => !usedBySlot.has(k));
 
     let html = `<div style="font-size:12px;font-weight:600;color:var(--ink-hi);margin:14px 0 2px;">
       「${name}」动画工坊 · 传视频自动抠图入包;每个槽位用哪条动画也在这里改</div>
       <div class="tip" style="margin:4px 0 6px;">「用哪条动画」是一张映射表:想把彩蛋和摸鱼对调,
       直接在两行的下拉里互换即可,不用改文件名。上传视频会写进<b>本槽位同名</b>的动画并把映射复位。
-      循环槽位的视频尽量首尾同一姿势,对不上工坊会自动找切点或倒放补循环;
+      表情/点击/彩蛋/摸鱼在桌宠端都是按前缀抽的池子,想做几条就用分类下方的<b>「+ 新增槽位」</b>加。
       <b>动画预览窗在页面最底部</b>,上传/点预览后会自动滚过去。</div>
       <table class="anim-map"><tr><th style="width:31%;">槽位</th><th style="width:22%;">用哪条动画</th>
-        <th>状态</th><th style="width:236px;"></th></tr>`;
-    const row = (s, cur, m) => `<tr data-slot="${s.key}">
-      <td>${s.label} <span style="color:var(--muted-2);font-family:ui-monospace,monospace;">${s.key}</span>${s.must ? ' <span class="tag-ok">●必传</span>' : ''}
-        ${s.feature ? `<div style="font-size:10px;color:var(--muted-2);">${s.feature}</div>` : ''}</td>
-      <td><select class="ps-map" data-slot="${s.key}">${opts(cur)}</select></td>
-      <td class="ps-status">${m ? `<span class="tag-ok">✓ ${m.frames} 帧 @ ${(+m.fps).toFixed(0)}fps</span>` : '<span class="tag-miss">未上传</span>'}
-        <div class="ps-check" style="font-size:10px;margin-top:2px;"></div></td>
-      <td class="ps-acts">
-        <button class="live-btn" data-up="${s.key}">${m ? '重新上传' : '上传视频'}</button>
-        ${m ? `<button class="live-btn" data-pv="${s.key}" style="margin-left:6px;">预览</button>
-               <button class="live-btn" data-live="${s.key}" style="margin-left:6px;" title="在桌宠上真机播放">▶ 桌宠</button>
-               <button class="live-btn" data-del="${s.key}" style="margin-left:6px;">删除</button>` : ''}
-        ${s.key.startsWith('egg_') && m ? `<button class="live-btn" data-eggtoggle="${s.key}" style="margin-left:6px;"
-            title="禁用的彩蛋不进待机随机池">${offEggs.includes(s.key) ? '启用' : '禁用'}</button>` : ''}
-      </td></tr>`;
+        <th>状态</th><th style="width:270px;"></th></tr>`;
     for (const cat of CATS) {
       html += `<tr><td colspan="4" style="color:var(--accent);font-weight:600;padding-top:8px;">${cat}</td></tr>`;
-      for (const s of PACK_SLOTS.filter((x) => x.cat === cat)) {
-        const cur = this.srcOf(s.key, map);
-        html += row(s, man[cur] ? cur : '', man[cur]);
+      for (const s of this.ctx.slots.filter((x) => x.cat === cat)) html += this.rowHtml(s);
+      if (CAT_POOL[cat]) {
+        html += `<tr><td colspan="4" style="padding-bottom:6px;">
+          <button class="live-btn" data-addslot="${cat}">＋ 新增${cat}槽位</button>
+          <span style="font-size:10px;color:var(--muted-2);margin-left:8px;">
+            自动加 ${CAT_POOL[cat]} 前缀 —— 桌宠就是按这个前缀抽池子的</span>
+          ${cat === '点击' ? '<button class="live-btn" data-hitzone="1" style="margin-left:10px;">配置点击区域</button>' : ''}</td></tr>`;
       }
     }
     if (orphan.length) {
       html += `<tr><td colspan="4" style="color:var(--accent);font-weight:600;padding-top:8px;">
         目录外的动画(没有槽位在用,可以在上面的下拉里指过去)</td></tr>`;
       for (const k of orphan) {
-        const m = man[k];
+        const m = this.ctx.man[k];
         html += `<tr><td colspan="2"><span style="font-family:ui-monospace,monospace;">${k}</span></td>
           <td><span class="tag-ok">✓ ${m.frames} 帧 @ ${(+m.fps).toFixed(0)}fps</span></td>
           <td><button class="live-btn" data-pvraw="${k}">预览</button>
@@ -483,100 +523,238 @@ const PackStudio = {
     }
     html += `</table>
       <div id="ps-map-r" style="font-size:11px;color:var(--success);margin-top:6px;min-height:15px;"></div>
+      <div id="ps-hitzone"></div>
       <input type="file" id="ps-file" accept="video/mp4,video/webm,video/quicktime" style="display:none;">`;
-    // 全屏特效清单(原「动画清单」页搬过来)
-    const fx = data.persona.fx || [];
+    const fx = persona.fx || [];
     html += `<div style="font-size:11px;color:var(--muted);margin-top:8px;">全屏特效:` +
       (fx.length ? fx.map((f) => `<span class="tag-ok">[fx:${f}] ✓</span>`).join(' ')
                  : '<span class="tag-miss">无(由码绘寒潮兜底)</span>') + '</div>';
-    html += PersonaUI.emoProtocolHtml(man, data.persona);
+    html += PersonaUI.emoProtocolHtml(this.ctx.man, persona);
     det.innerHTML = html;
     det.scrollIntoView({ behavior: 'smooth', block: 'start' });
     PersonaUI.bindEmoProtocol(id);
+    this.bind();
+    this.checkEnds();
+  },
 
-    const fileInput = det.querySelector('#ps-file');
-    det.querySelectorAll('[data-up]').forEach((b) => b.addEventListener('click', () => {
-      if (this.busy) { alert('上一条还在处理,稍等'); return; }
-      fileInput.onchange = () => {
-        if (fileInput.files[0]) this.upload(id, name, b.dataset.up, fileInput.files[0]);
-        fileInput.value = '';
-      };
-      fileInput.click();
-    }));
-    const preview = async (key) => {
-      const fresh = await window.pet.personaManifest(id);
-      if (fresh?.manifest?.[key]) PersonaUI.playPreview(id, key, fresh.manifest[key]);
-    };
-    det.querySelectorAll('[data-pv]').forEach((b) =>
-      b.addEventListener('click', () => preview(this.srcOf(b.dataset.pv, map))));
-    det.querySelectorAll('[data-pvraw]').forEach((b) =>
-      b.addEventListener('click', () => preview(b.dataset.pvraw)));
-    det.querySelectorAll('[data-live]').forEach((b) =>   // 真机播放走槽位名,桌宠自己按映射解析
-      b.addEventListener('click', () => window.pet.personaPreviewAnim?.(b.dataset.live)));
-    det.querySelectorAll('[data-eggtoggle]').forEach((b) => b.addEventListener('click', async () => {
-      const k = b.dataset.eggtoggle;
-      const list = offEggs.includes(k) ? offEggs.filter((x) => x !== k) : [...offEggs, k];
-      await window.pet.personaSetMeta?.(id, { disabledEggs: list });
-      this.show(id, name);
-    }));
-    const del = async (key) => {
-      if (!confirm(`删除「${key}」这条动画?指向它的槽位会变成空的。`)) return;
-      const r = await window.pet.personaRemoveAnim(id, key);
-      if (!r.ok) { alert('删除失败:' + r.err); return; }
-      await PersonaUI.refresh();
-      this.show(id, name);
-    };
-    det.querySelectorAll('[data-del]').forEach((b) =>
-      b.addEventListener('click', () => del(this.srcOf(b.dataset.del, map))));
-    det.querySelectorAll('[data-delraw]').forEach((b) =>
-      b.addEventListener('click', () => del(b.dataset.delraw)));
-    // 改映射:即时写回包(主进程广播 persona-refresh,生效中的形象热重载)
-    det.querySelectorAll('.ps-map').forEach((sel) => sel.addEventListener('change', async () => {
+  say(msg, bad) {
+    const r = document.getElementById('ps-map-r');
+    if (!r) return;
+    r.textContent = msg;
+    r.style.color = bad ? 'var(--gem)' : 'var(--success)';
+  },
+  async saveMap() {
+    const ok = await window.pet.personaSetMeta?.(this.ctx.id, { slotMap: this.ctx.map });
+    this.say(ok ? '✓ 已保存,桌宠已热应用' : '✗ 保存失败', !ok);
+    return ok;
+  },
+
+  /* 事件全部委托到容器上:行内容会被就地重绘,挂在按钮上的监听会掉。
+   * 用 on* 属性而不是 addEventListener——show() 会重跑,监听器不能叠加 */
+  bind() {
+    const det = document.getElementById('persona-detail');
+    const file = det.querySelector('#ps-file');
+    det.onchange = async (ev) => {
+      const sel = ev.target.closest('.ps-map');
+      if (!sel) return;
       const slot = sel.dataset.slot;
-      if (sel.value === slot) delete map[slot]; else map[slot] = sel.value;
-      const ok = await window.pet.personaSetMeta?.(id, { slotMap: map });
-      const r = det.querySelector('#ps-map-r');
-      r.textContent = ok ? `✓ 「${slot}」已指向 ${sel.value || '(空)'}，桌宠已热应用` : '✗ 保存失败';
-      r.style.color = ok ? 'var(--success)' : 'var(--gem)';
-      this.checkEnds(id, map);
-    }));
-    this.checkEnds(id, map);
+      if (sel.value === slot) delete this.ctx.map[slot]; else this.ctx.map[slot] = sel.value;
+      if (await this.saveMap()) this.say(`✓ 「${slot}」已指向 ${sel.value || '(空)'},桌宠已热应用`);
+      this.refreshRow(slot);            // ← 状态/按钮跟着换,否则还写着「未上传」
+      this.checkEnds();
+    };
+    det.onclick = async (ev) => {
+      const b = ev.target.closest('button[data-up],button[data-pv],button[data-live],button[data-del],'
+        + 'button[data-eggtoggle],button[data-rmslot],button[data-pvraw],button[data-delraw],'
+        + 'button[data-addslot],button[data-hitzone]');
+      if (!b) return;
+      const d = b.dataset;
+      const { id, name } = this.ctx;
+      if (d.up) {
+        if (this.busy) { alert('上一条还在处理,稍等'); return; }
+        file.onchange = () => {
+          if (file.files[0]) this.upload(id, name, d.up, file.files[0]);
+          file.value = '';
+        };
+        file.click();
+      } else if (d.pv || d.pvraw) {
+        const key = d.pvraw || this.srcOf(d.pv);
+        if (this.ctx.man[key]) PersonaUI.playPreview(id, key, this.ctx.man[key]);
+      } else if (d.live) {
+        window.pet.personaPreviewAnim?.(d.live);   // 真机播走槽位名,桌宠自己按映射解析
+      } else if (d.del || d.delraw) {
+        const key = d.delraw || this.srcOf(d.del);
+        if (!confirm(`删除「${key}」这条动画?指向它的槽位会变成空的。`)) return;
+        const r = await window.pet.personaRemoveAnim(id, key);
+        if (!r.ok) { alert('删除失败:' + r.err); return; }
+        await PersonaUI.refresh();
+        this.show(id, name);
+      } else if (d.eggtoggle) {
+        const k = d.eggtoggle;
+        const list = this.ctx.offEggs.includes(k)
+          ? this.ctx.offEggs.filter((x) => x !== k) : [...this.ctx.offEggs, k];
+        await window.pet.personaSetMeta?.(id, { disabledEggs: list });
+        this.show(id, name);
+      } else if (d.addslot) {
+        this.addSlot(d.addslot);
+      } else if (d.rmslot) {
+        if (!confirm(`移除自建槽位「${d.rmslot}」?动画文件还在,只是不再占一行。`)) return;
+        const extra = (this.ctx.persona.extraSlots || []).filter((s) => s.key !== d.rmslot);
+        delete this.ctx.map[d.rmslot];
+        await window.pet.personaSetMeta?.(id, { extraSlots: extra, slotMap: this.ctx.map });
+        this.show(id, name);
+      } else if (d.hitzone) {
+        this.hitZoneEditor();
+      }
+    };
+  },
+
+  /* 新增槽位:前缀按分类自动补齐(桌宠端就是按前缀抽池子的,名字不带前缀等于白建) */
+  async addSlot(cat) {
+    const pre = CAT_POOL[cat];
+    const raw = prompt(`新增${cat}槽位。输入英文短名(会自动补 ${pre} 前缀),例如 ${pre}coffee`);
+    if (raw === null) return;
+    let key = raw.trim().toLowerCase().replace(/[^a-z0-9_]/g, '');
+    if (!key) return;
+    if (!key.startsWith(pre)) key = pre + key;
+    if (!/^[a-z][a-z0-9_]{1,23}$/.test(key)) { alert('名字只能用小写字母、数字和下划线,最长 24 位'); return; }
+    if (this.ctx.slots.some((s) => s.key === key)) { alert(`「${key}」已经有了`); return; }
+    const label = (prompt('显示名称(中文即可)', key) || key).trim().slice(0, 20);
+    const extra = [...(this.ctx.persona.extraSlots || []), { key, label, cat }];
+    const ok = await window.pet.personaSetMeta?.(this.ctx.id, { extraSlots: extra });
+    if (!ok) { alert('保存失败'); return; }
+    await this.show(this.ctx.id, this.ctx.name);
+    this.say(`✓ 已新增槽位「${label}」${key},传条视频给它吧`);
+  },
+
+  /* 点击命中区编辑器:在待机首帧上拉框,框到哪块就播哪条 touch_ 动画。
+   * 坐标存成帧内百分比(与 Persona.hitZone 同约定),按序判定,小框放前面。 */
+  async hitZoneEditor() {
+    const host = document.getElementById('ps-hitzone');
+    if (host.dataset.on) {
+      host.dataset.on = ''; host.innerHTML = '';
+      window.onmousemove = null; window.onmouseup = null; return;
+    }
+    host.dataset.on = '1';
+    const { id, man, persona } = this.ctx;
+    const idleKey = this.srcOf('idle');
+    const m = man[idleKey];
+    if (!m) { host.innerHTML = '<div class="tip">先给待机槽位传一条动画,才有底图可以框。</div>'; return; }
+    const url = await window.pet.personaFile(id, idleKey + '.webp');
+    const img = new Image();
+    await new Promise((r) => { img.onload = r; img.onerror = r; img.src = url; });
+    const W = 240, H = Math.round(m.fh * W / m.fw);
+    const touchSlots = this.ctx.slots.filter((s) => s.key.startsWith('touch_') && man[this.srcOf(s.key)]);
+    if (!touchSlots.length) { host.innerHTML = '<div class="tip">先给点击类槽位传动画,再来配区域。</div>'; return; }
+    const zones = JSON.parse(JSON.stringify(persona.hitZones?.zones || []));
+    let fb = persona.hitZones?.fallback ? { ...persona.hitZones.fallback } : null;
+    const animOpts = (sel) => touchSlots
+      .map((s) => `<option value="${s.key}" ${sel === s.key ? 'selected' : ''}>${s.label} · ${s.key}</option>`).join('');
+
+    let s0 = null, ghost = null;
+    const draw = () => {
+      host.innerHTML = `<div style="font-size:12px;font-weight:600;color:var(--ink-hi);margin:12px 0 4px;">
+        点击区域 · 在图上拖一个框,再选这块要播哪条动画</div>
+        <div class="tip" style="margin:0 0 8px;">按从上到下的顺序判定,所以<b>小框放前面</b>(手在头框里侧的情况);
+        都没框到就用兜底。不配的话走默认:上半身=摸头,其余=点身体。</div>
+        <div style="display:flex;gap:14px;align-items:flex-start;flex-wrap:wrap;">
+        <div class="hz-wrap" id="hz-cv" style="width:${W}px;height:${H}px;">
+          <canvas width="${W}" height="${H}" style="display:block;"></canvas>
+          ${zones.map((z, i) => `<div class="hz-box" style="left:${z.x0 * W}px;top:${z.y0 * H}px;
+            width:${(z.x1 - z.x0) * W}px;height:${(z.y1 - z.y0) * H}px;"><b>${i + 1}</b></div>`).join('')}
+        </div>
+        <div style="flex:1;min-width:330px;">
+          <table class="anim-map"><tr><th style="width:26px;">#</th><th>触发的动画</th>
+            <th style="width:88px;">部位名</th><th style="width:44px;"></th></tr>
+          ${zones.map((z, i) => `<tr><td>${i + 1}</td>
+            <td><select class="ps-map hz-anim" data-i="${i}">${animOpts(z.anim)}</select></td>
+            <td><input class="emo-desc-in hz-part" data-i="${i}" value="${(z.part || '身体').replace(/"/g, '&quot;')}"></td>
+            <td><button class="live-btn" data-hzdel="${i}">删</button></td></tr>`).join('')
+            || '<tr><td colspan="4" style="color:var(--muted-2);">还没框,直接在左边图上拖一个</td></tr>'}
+          <tr><td>兜底</td>
+            <td><select class="ps-map hz-fb">${['<option value="">(不设,走默认判定)</option>', animOpts(fb?.anim)].join('')}</select></td>
+            <td><input class="emo-desc-in hz-fbpart" value="${(fb?.part || '身体').replace(/"/g, '&quot;')}"></td>
+            <td></td></tr></table>
+          <button class="live-btn" id="hz-save" style="margin-top:8px;">保存点击区域</button>
+          <button class="live-btn" id="hz-clear" style="margin-left:6px;">全部清掉</button>
+          <span id="hz-r" style="font-size:11px;color:var(--success);margin-left:8px;"></span>
+        </div></div>`;
+      const cv = host.querySelector('canvas');
+      cv.getContext('2d').drawImage(img, 0, 0, m.fw, m.fh, 0, 0, W, H);
+      const wrap = host.querySelector('#hz-cv');
+      wrap.onmousedown = (e) => {
+        const r = wrap.getBoundingClientRect();
+        s0 = [e.clientX - r.left, e.clientY - r.top];
+        ghost = document.createElement('div');
+        ghost.className = 'hz-box';
+        wrap.appendChild(ghost);
+      };
+      window.onmousemove = (e) => {
+        if (!s0 || !ghost) return;
+        const r = wrap.getBoundingClientRect();
+        const x = Math.max(0, Math.min(W, e.clientX - r.left)), y = Math.max(0, Math.min(H, e.clientY - r.top));
+        Object.assign(ghost.style, { left: Math.min(s0[0], x) + 'px', top: Math.min(s0[1], y) + 'px',
+          width: Math.abs(x - s0[0]) + 'px', height: Math.abs(y - s0[1]) + 'px' });
+      };
+      window.onmouseup = (e) => {
+        if (!s0) return;
+        const r = document.getElementById('hz-cv').getBoundingClientRect();
+        const x = Math.max(0, Math.min(W, e.clientX - r.left)), y = Math.max(0, Math.min(H, e.clientY - r.top));
+        const [x0, x1] = [Math.min(s0[0], x) / W, Math.max(s0[0], x) / W];
+        const [y0, y1] = [Math.min(s0[1], y) / H, Math.max(s0[1], y) / H];
+        s0 = null; ghost?.remove(); ghost = null;
+        if (x1 - x0 < 0.04 || y1 - y0 < 0.04) return;   // 手滑点一下不算
+        zones.push({ anim: touchSlots[0].key, part: '身体', x0, y0, x1, y1 });
+        draw();
+      };
+      host.querySelectorAll('[data-hzdel]').forEach((b) => b.addEventListener('click', () => {
+        zones.splice(+b.dataset.hzdel, 1); draw();
+      }));
+      host.querySelector('#hz-clear').addEventListener('click', () => { zones.length = 0; fb = null; draw(); });
+      host.querySelector('#hz-save').addEventListener('click', async () => {
+        host.querySelectorAll('.hz-anim').forEach((s) => { zones[+s.dataset.i].anim = s.value; });
+        host.querySelectorAll('.hz-part').forEach((i) => { zones[+i.dataset.i].part = i.value.trim() || '身体'; });
+        const fa = host.querySelector('.hz-fb').value;
+        fb = fa ? { anim: fa, part: host.querySelector('.hz-fbpart').value.trim() || '身体' } : null;
+        const ok = await window.pet.personaSetMeta?.(id, { hitZones: { zones, ...(fb ? { fallback: fb } : {}) } });
+        const r = host.querySelector('#hz-r');
+        r.textContent = ok ? '✓ 已保存并热应用' : '✗ 保存失败';
+        r.style.color = ok ? 'var(--success)' : 'var(--gem)';
+      });
+    };
+    draw();
   },
 
   /* 首尾帧校验(用户拍板的两条,其余一概不管):
    *  · 循环槽位 —— 首尾必须基本一样,否则循环播到接缝会跳;
    *  · 入睡/睡醒 —— 首尾必须不一样(睁眼→闭眼 / 闭眼→睁眼),一样说明放错了动画。
    * 只提醒不拦截。逐条串行量,量完就松开位图,免得几十张雪碧图一起占内存。 */
-  async checkEnds(id, map) {
+  async checkEnds() {
     const det = document.getElementById('persona-detail');
-    const data = await window.pet.personaManifest(id);
-    if (!data) return;
-    const man = data.manifest;
+    const { id, man } = this.ctx;
     this._ends = this._ends || {};
-    for (const s of PACK_SLOTS) {
-      const key = this.srcOf(s.key, map);
+    for (const s of this.ctx.slots) {
+      const key = this.srcOf(s.key);
       const m = man[key];
       const cell = det.querySelector(`tr[data-slot="${s.key}"] .ps-check`);
       if (!cell) continue;
       if (!m) { cell.textContent = ''; continue; }
-      const cacheKey = id + ':' + key;
-      if (this._ends[cacheKey] === undefined) {
+      const ck = id + ':' + key;
+      if (this._ends[ck] === undefined) {
         cell.innerHTML = '<span style="color:var(--muted-2);">量首尾帧…</span>';
-        this._ends[cacheKey] = await PackPipe.measureEnds(id, key, m);
+        this._ends[ck] = await PackPipe.measureEnds(id, key, m);
       }
-      const d = this._ends[cacheKey];
+      const d = this._ends[ck];
       if (d == null) { cell.textContent = ''; continue; }
       const same = d < PackPipe.ENDS_SAME;
       const trans = s.key === 'sleep_in' || s.key === 'sleep_out';
-      let msg = '', color = 'var(--muted-2)';
+      let msg = `首尾残差 ${d.toFixed(1)} ✓`, color = 'var(--muted-2)';
       if (trans && same) {
-        msg = `⚠ 首尾几乎一样(${d.toFixed(1)})——入睡/睡醒是过渡动画，首尾该是睁眼→闭眼，换一条`;
+        msg = `⚠ 首尾几乎一样(${d.toFixed(1)})——入睡/睡醒是过渡动画,首尾该是睁眼→闭眼,换一条`;
         color = 'var(--warn)';
       } else if (!trans && s.loop !== false && !same) {
-        msg = `⚠ 首尾差得多(${d.toFixed(1)})——循环播到接缝会跳，换一条首尾同姿势的`;
+        msg = `⚠ 首尾差得多(${d.toFixed(1)})——循环播到接缝会跳,换一条首尾同姿势的`;
         color = 'var(--warn)';
-      } else {
-        msg = `首尾残差 ${d.toFixed(1)} ✓`;
       }
       cell.innerHTML = `<span style="color:${color};">${msg}</span>`;
     }
