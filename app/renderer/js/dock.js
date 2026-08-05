@@ -24,6 +24,43 @@ const Dock = {
 
   tab() { return document.getElementById('dock-tab'); },
 
+  /* 让某条动画「画面的右边缘」正好压在屏幕右边缘上,返回 wrapper 该放的 left。
+   * 不能拿 #pet 的右边当准星:雪碧图的画布比人物宽(待机右侧就空着 40 多个
+   * 画布像素),再叠上 fit 的位移,人物会从离边缘几十像素的地方冒出来,
+   * 看着不像"从屏幕外滑进来"(用户实测)。所以按这条动画实际画到画布上的
+   * 矩形右端来算。 */
+  edgeLeftFor(anim) {
+    const w = $('pet-wrapper'), pet = $('pet');
+    const wr = w.getBoundingClientRect(), pr = pet.getBoundingClientRect();
+    const inset = pr.left - wr.left;              // #pet 在 wrapper 里的左偏移
+    const m = Persona.active && Persona.has(anim) ? Persona.manifest[anim] : null;
+    if (!m || !pr.width) return Math.round(window.innerWidth - (pr.right - wr.left));
+    const base = Persona.baseCanvas();
+    const k = pr.width / base.w;                  // 画布像素 → 屏幕像素
+    const s2 = m.fit ? m.fit.s1 : 1;
+    const x = m.fit ? m.fit.x1 : (m.dx || 0);
+    // 画面右端相对 #pet 左边的距离。画超出画布的部分会被 canvas 裁掉,
+    // 所以封顶在画布宽度上——否则会把裁掉的那截也算进去,反而贴过头
+    const right = Math.min(x + m.fw * s2, base.w) * k;
+    return Math.round(window.innerWidth - inset - right);
+  },
+
+  /* 把雪碧图画布的右边缘怼到屏幕右边缘。
+   * 不能直接拿容器定位:容器比画布宽一圈(包形象下 #pet 是 left:50% 居中的,
+   * 两侧各空 15px),再叠上 CSS 里 right:20px 的默认内缩,画布实际离屏幕边
+   * 有三十几像素;贴边动画里人物是"走到画布右缘"消失的,于是看着像悬在半空
+   * 出来(用户实测:离边缘还有几十像素)。这里按实测几何算,馒头本体和包形象
+   * 都适用,不写死任何数字。 */
+  snapToEdge() {
+    const w = $('pet-wrapper'), p = $('pet');
+    const wr = w.getBoundingClientRect(), pr = p.getBoundingClientRect();
+    if (!pr.width) return;
+    w.style.left = (wr.left + (window.innerWidth - pr.right)) + 'px';
+    w.style.top = wr.top + 'px';
+    w.style.right = 'auto';
+    w.style.bottom = 'auto';
+  },
+
   /* 有专属动画就播它,没有就退回 CSS 滑动。返回 {ms, anim, fps}(anim=null 表示走的 CSS) */
   playOrSlide(anim, slideClass) {
     const w = $('pet-wrapper');
@@ -61,6 +98,7 @@ const Dock = {
     document.querySelectorAll('.panel.show').forEach((p) => p.classList.remove('show'));
     $('hover-btns').classList.remove('show');
     $('todo-banner')?.classList.remove('show');
+    this.snapToEdge();        // 先贴死右缘,人物才是从屏幕边上飘出去的
     const pass = this.playOrSlide('dock_out', 'out');
     await this.waitPass(pass);
     w.style.visibility = 'hidden';
@@ -86,13 +124,8 @@ const Dock = {
     this.tab()?.classList.remove('show');
     refreshPassthrough();
     const w = $('pet-wrapper');
-    // 贴边收起是"滑到屏幕外"，回来时先把人物放回右边缘再滑进画面
-    const petW = document.getElementById('pet').offsetWidth || 168;
-    const r = w.getBoundingClientRect();
-    if (r.right > window.innerWidth - 4) {
-      w.style.left = (window.innerWidth - petW - 24) + 'px';
-      w.style.right = 'auto';
-    }
+    w.classList.remove('docking');   // CSS 兜底那档的 translateX 得先撤,不然量出来的几何是偏的
+    this.snapToEdge();               // 回来也贴死右缘,人物才是从屏幕边上飘进来的
     /* 先让 Player 切到 dock_in 再显形:反过来的话,显形那一刻画布上还是
      * idle 的帧,会"啪"地弹出一整个人物,而不是从画外滑进来 */
     const pass = this.playOrSlide('dock_in', 'in');
