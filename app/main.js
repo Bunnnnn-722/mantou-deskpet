@@ -602,6 +602,17 @@ ipcMain.handle('persona-write-anim', (_e, { id, slot, dataUrl, entry }) => {
       if (!Number.isFinite(v)) return { ok: false, err: `manifest 缺字段 ${k}` };
       ent[k] = k === 'fps' ? v : Math.round(v);
     }
+    // 色调校正(亮度/饱和度乘数,工坊比对待机算好带过来)
+    if (entry.tone && typeof entry.tone === 'object') {
+      const t = {};
+      let bad = false;
+      for (const k of ['b0', 'b1', 'sa0', 'sa1']) {
+        const v = +entry.tone[k];
+        if (!Number.isFinite(v)) { bad = true; break; }
+        t[k] = Math.round(v * 1000) / 1000;
+      }
+      if (!bad) ent.tone = t;
+    }
     // 尺寸对齐参数(工坊按人物框算好带过来):六个数,渲染端逐帧插值用
     if (entry.fit && typeof entry.fit === 'object') {
       const f = {};
@@ -622,7 +633,7 @@ ipcMain.handle('persona-write-anim', (_e, { id, slot, dataUrl, entry }) => {
 
 /* 只改某条动画的尺寸对齐参数(工坊「对齐到待机」用):不重传雪碧图,
  * 只往 manifest 里写/删这一组 fit */
-ipcMain.handle('persona-set-fit', (_e, { id, anim, fit }) => {
+ipcMain.handle('persona-set-fit', (_e, { id, anim, fit, tone }) => {
   try {
     if (!/^[\w-]+$/.test(id) || !/^[a-z0-9_]{1,24}$/.test(anim || '')) return false;
     const manPath = path.join(PERSONAS_DIR(), id, 'manifest.json');
@@ -637,6 +648,17 @@ ipcMain.handle('persona-set-fit', (_e, { id, anim, fit }) => {
         f[k] = Math.round(v * 1000) / 1000;
       }
       man[anim].fit = f;
+    }
+    if (!tone) delete man[anim].tone;
+    else {
+      const t = {};
+      let bad = false;
+      for (const k of ['b0', 'b1', 'sa0', 'sa1']) {
+        const v = +tone[k];
+        if (!Number.isFinite(v)) { bad = true; break; }
+        t[k] = Math.round(v * 1000) / 1000;
+      }
+      if (!bad) man[anim].tone = t;
     }
     fs.writeFileSync(manPath, JSON.stringify(man, null, 1));
     if (win && !win.isDestroyed()) win.webContents.send('persona-refresh');

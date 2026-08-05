@@ -102,6 +102,9 @@ const Dock = {
     const pass = this.playOrSlide('dock_out', 'out');
     await this.waitPass(pass);
     w.style.visibility = 'hidden';
+    // 顺手把雪碧图画布擦干净:不擦的话画布上留着 Player 回落 idle 时画的那一帧,
+    // 下次滑出来的瞬间会先闪出一整个人物再被 dock_in 覆盖(用户实测"出来时闪现")
+    Sprites.ctx?.clearRect(0, 0, Sprites.canvas.width, Sprites.canvas.height);
     w.classList.remove('docking');
     this.docked = true;
     this.busy = false;
@@ -129,7 +132,12 @@ const Dock = {
     /* 先让 Player 切到 dock_in 再显形:反过来的话,显形那一刻画布上还是
      * idle 的帧,会"啪"地弹出一整个人物,而不是从画外滑进来 */
     const pass = this.playOrSlide('dock_in', 'in');
-    if (pass.anim) await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+    if (pass.anim) {
+      // Player 是按动画 fps 推帧的(12fps≈83ms),等两个 rAF 根本轮不到它画;
+      // 先把首帧(空白)自己画上去,再显形 —— 否则显形那一刻画布还是空的/旧的
+      await Sprites.preload(pass.anim);
+      Sprites.draw(pass.anim, 0);
+    }
     w.style.visibility = '';
     this.docked = false;
     this.busy = false;

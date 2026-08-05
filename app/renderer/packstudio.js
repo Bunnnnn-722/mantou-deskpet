@@ -434,6 +434,34 @@ const PackPipe = {
     return { fit: { s0: R(s), s1: R(s), x0: R(X), x1: R(X), y0: R(Y), y1: R(Y) }, scale: s };
   },
 
+  /* 色调对齐:不同批次生成的视频常常整体偏亮/偏暗、偏灰/偏艳(生产线管这叫
+   * "素材批次偏色")。统计人物不透明区域的平均亮度与平均饱和度,算出一组
+   * 亮度/饱和度乘数写进 manifest 的 tone —— 渲染端 Sprites.draw 本来就会拿
+   * 它做 filter:brightness()/saturate()。夹在 0.75~1.35,免得一条曝光废片
+   * 把整个人物拉爆。返回 null = 差得不值当校正。 */
+  toneTo(refImg, idleImg) {
+    const stat = (img) => {
+      const d = img.data;
+      let n = 0, lum = 0, sat = 0;
+      for (let i = 0; i < d.length; i += 4) {
+        if (d[i + 3] <= 128) continue;
+        const r = d[i], g = d[i + 1], b = d[i + 2];
+        const mx = Math.max(r, g, b), mn = Math.min(r, g, b);
+        lum += 0.299 * r + 0.587 * g + 0.114 * b;
+        sat += mx ? (mx - mn) / mx : 0;
+        n++;
+      }
+      return n > 200 ? { lum: lum / n, sat: sat / n } : null;
+    };
+    const A = stat(idleImg), B = stat(refImg);
+    if (!A || !B || !B.lum || !B.sat) return null;
+    const cl = (v) => Math.max(0.75, Math.min(1.35, v));
+    const b = cl(A.lum / B.lum), sa = cl(A.sat / B.sat);
+    if (Math.abs(b - 1) < 0.03 && Math.abs(sa - 1) < 0.05) return null;
+    const R = (v) => Math.round(v * 1000) / 1000;
+    return { tone: { b0: R(b), b1: R(b), sa0: R(sa), sa1: R(sa) }, b, sa };
+  },
+
   /* 首帧一致性:新动画首帧 vs 待机首帧(公共画布坐标系,64 格采样)。
    * 轮廓 IoU 低/交集色差大 → 切换动画会跳变,提醒但不拦(用户自己定夺) */
   compareFirstFrames(a, b) {
@@ -495,7 +523,7 @@ const PackStudio = {
     return `<button class="live-btn" data-up="${s.key}">${m ? '重新上传' : '上传视频'}</button>`
       + (m ? `<button class="live-btn" data-pv="${s.key}" style="margin-left:6px;">预览</button>
              <button class="live-btn" data-live="${s.key}" style="margin-left:6px;" title="在桌宠上真机播放">▶ 桌宠</button>
-             <button class="live-btn" data-align="${s.key}" style="margin-left:6px;" title="按人物外框把大小/落点贴齐待机">对齐待机</button>
+             <button class="live-btn" data-align="${s.key}" style="margin-left:6px;" title="按人物外框把大小/落点贴齐待机,顺带校正亮度与饱和度">对齐待机</button>
              <button class="live-btn" data-del="${s.key}" style="margin-left:6px;">删除</button>` : '')
       + (s.key.startsWith('egg_') && m ? `<button class="live-btn" data-eggtoggle="${s.key}" style="margin-left:6px;"
           title="禁用的彩蛋不进待机随机池">${off ? '启用' : '禁用'}</button>` : '')
@@ -578,7 +606,7 @@ const PackStudio = {
     }
     html += `</table>
       <div style="margin-top:8px;">
-        <button class="live-btn" id="ps-align-all" title="逐条按人物外框贴齐待机,大小/落点统一">全部对齐到待机</button>
+        <button class="live-btn" id="ps-align-all" title="逐条贴齐待机:大小、落点、亮度、饱和度">全部对齐到待机</button>
         <span style="font-size:10.5px;color:var(--muted-2);margin-left:8px;">源视频画幅不一致时人物会一大一小,点这个统一</span>
       </div>
       <div id="ps-map-r" style="font-size:11px;color:var(--success);margin-top:6px;min-height:15px;"></div>
@@ -677,7 +705,10 @@ const PackStudio = {
         this.show(id, name);
       } else if (d.align) {
         const r = await this.alignToIdle(id, d.align);
-        this.say(r ? `✓ 「${d.align}」已贴齐待机(缩放 ${(r.scale * 100).toFixed(1)}%)` : `「${d.align}」本来就是齐的`);
+        this.say(r ? `✓ 「${d.align}」已贴齐待机(`
+          + (r.scale ? `缩放 ${(r.scale * 100).toFixed(1)}%` : '大小本来就齐')
+          + (r.tone ? `,亮度 ${(r.tone.b * 100).toFixed(0)}% / 饱和 ${(r.tone.sa * 100).toFixed(0)}%` : '') + ')'
+          : `「${d.align}」大小和色调本来就是齐的`);
       } else if (d.offraw) {
         const k = d.offraw;
         if (this.ctx.map[k] === '') delete this.ctx.map[k]; else this.ctx.map[k] = '';
@@ -871,10 +902,14 @@ const PackStudio = {
             + `),切换动画时可能跳变——建议生成视频时都用同一张立绘`;
           // 人物大小对不上(不同批次生成的常见病):按人物框自动缩放对齐
           const f = PackPipe.fitTo(ref, idleFirst, r.entry);
-          if (f) {
-            r.entry.fit = f.fit;
+          const t = PackPipe.toneTo(ref, idleFirst);
+          if (f || t) {
+            if (f) r.entry.fit = f.fit;
+            if (t) r.entry.tone = t.tone;
             await window.pet.personaWriteAnim(id, slot, r.dataUrl, r.entry);
-            fitNote = `已按待机的人物框自动对齐(${which}比对,缩放 ${(f.scale * 100).toFixed(1)}%)`;
+            fitNote = '已按待机自动校正(' + which + '比对'
+              + (f ? `,缩放 ${(f.scale * 100).toFixed(1)}%` : '')
+              + (t ? `,亮度 ${(t.b * 100).toFixed(0)}% / 饱和 ${(t.sa * 100).toFixed(0)}%` : '') + ')';
           }
         }
       }
@@ -928,7 +963,8 @@ const PackStudio = {
     if (!ref || !idleFirst) return null;
     const same = m.canvasW === mi.canvasW && m.canvasH === mi.canvasH;
     const f = PackPipe.fitTo(ref, idleFirst, m, same);
-    await window.pet.personaSetFit?.(id, key, f ? f.fit : null);
-    return f;
+    const t = PackPipe.toneTo(ref, idleFirst);
+    await window.pet.personaSetFit?.(id, key, f ? f.fit : null, t ? t.tone : null);
+    return (f || t) ? { ...(f || {}), tone: t } : null;
   },
 };
