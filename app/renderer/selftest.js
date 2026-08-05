@@ -57,7 +57,9 @@
       // 把手必须在鼠标接管白名单里,否则点它会穿透到桌面(踩过:人出不来)
       ok('把手不被鼠标穿透', !!$('dock-tab').closest(PASSTHRU_UI));
       await Dock.in();
-      await waitFor(() => !Dock.docked, 2000);
+      // 显形现在是"等 Player 把 dock_in 画上画布"才发生(兜底 400ms),
+      // 不能只等 docked 翻牌就断言,那是竞态
+      await waitFor(() => !Dock.docked && $('pet-wrapper').style.visibility !== 'hidden', 2500);
       ok('从边缘滑出(人物回来+把手收掉)',
         $('pet-wrapper').style.visibility !== 'hidden' && !$('dock-tab').classList.contains('show'));
 

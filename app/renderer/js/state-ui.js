@@ -349,10 +349,15 @@ function setupPetMouse() {
     down = null; dragged = false;
     if (wasDrag && wantDock) {
       wantDock = false;
-      /* 收起时不要走松手回弹:那条 0.6s 的过冲曲线(cubic-bezier 1.56)会在
-       * dock_out 播放期间把人物又晃回画面里——用户看到的"强行闪出来" */
-      cv.style.transition = 'none';
-      cv.style.transform = '';
+      /* 收起时不走松手回弹:那条 0.6s 的过冲曲线(cubic-bezier 1.56)会在
+       * dock_out 播放期间把人物又晃回画面里。但也不能把 transform 瞬间清空——
+       * 拖拽时人物是带 3~5° 倾斜的,一帧归零会让脑袋横跳二三十像素,
+       * 看着就是"跳了一下"。改成 0.15s 平滑捋直,再交还样式表。 */
+      const baseT0 = document.getElementById('pet-wrapper').classList.contains('persona-on')
+        ? 'translateX(-50%)' : '';
+      cv.style.transition = 'transform 0.15s ease-out';
+      cv.style.transform = baseT0 || 'none';
+      setTimeout(() => { cv.style.transition = 'none'; cv.style.transform = ''; }, 180);
       dragV = 0;
       Dock.out('drag');
       return;

@@ -132,7 +132,12 @@ const Player = {
       const nowName = this.cur?.name;
       const nowSprite = Persona.active && Persona.has(nowName);
       if (nowSprite) {
-        if (Sprites.ready(nowName)) Sprites.draw(nowName, this.frame);
+        if (Sprites.ready(nowName)) {
+          Sprites.draw(nowName, this.frame);
+          // 贴边滑出:必须等这一帧真画上画布才放开 visibility,否则显形那一刻
+          // 画布上还是上一次留下的画面,会闪一整个人物出来(用户实测)
+          if (Dock.revealOn === nowName) { Dock.reveal(); }
+        }
       } else if (!Persona.active) {
         BUN.render(nowName, this.frame, this.acc);
       }

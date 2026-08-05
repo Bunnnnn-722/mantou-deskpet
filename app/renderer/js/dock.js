@@ -149,14 +149,26 @@ const Dock = {
      * idle 的帧,会"啪"地弹出一整个人物,而不是从画外滑进来 */
     const pass = this.playOrSlide('dock_in', 'in');
     if (pass.anim) {
-      // Player 是按动画 fps 推帧的(12fps≈83ms),等两个 rAF 根本轮不到它画;
-      // 先把首帧(空白)自己画上去,再显形 —— 否则显形那一刻画布还是空的/旧的
+      /* 显形的时机交给 Player:它真把 dock_in 的某一帧画上画布之后才放开
+       * visibility(Player 按动画 fps 推帧,12fps≈83ms,自己掐表必踩空)。
+       * 兜底 400ms,万一 Player 那边没动静也不能把人物永久藏着。 */
       await Sprites.preload(pass.anim);
-      Sprites.draw(pass.anim, 0);
+      this.revealOn = pass.anim;
+      setTimeout(() => this.reveal(), 400);
+    } else {
+      w.style.visibility = '';
     }
-    w.style.visibility = '';
     this.docked = false;
     this.busy = false;
+  },
+
+  // Player 画上第一帧后由它回调(或 400ms 兜底);只生效一次
+  revealOn: null,
+  reveal() {
+    if (!this.revealOn) return;
+    this.revealOn = null;
+    $('pet-wrapper').style.visibility = '';
+    refreshPassthrough();
   },
 
   toggle() { return this.docked ? this.in() : this.out('btn'); },
