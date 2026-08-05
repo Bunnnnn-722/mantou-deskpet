@@ -347,7 +347,16 @@ function setupPetMouse() {
     if (!down) return;
     const wasDrag = dragged;
     down = null; dragged = false;
-    if (wasDrag && wantDock) { wantDock = false; Dock.out('drag'); }
+    if (wasDrag && wantDock) {
+      wantDock = false;
+      /* 收起时不要走松手回弹:那条 0.6s 的过冲曲线(cubic-bezier 1.56)会在
+       * dock_out 播放期间把人物又晃回画面里——用户看到的"强行闪出来" */
+      cv.style.transition = 'none';
+      cv.style.transform = '';
+      dragV = 0;
+      Dock.out('drag');
+      return;
+    }
     if (wasDrag) {
       // 松手回弹;回弹完清掉内联 transform,交还样式表(包形象的居中/hover 才能恢复)
       dragV = 0;

@@ -99,6 +99,22 @@ const Dock = {
     $('hover-btns').classList.remove('show');
     $('todo-banner')?.classList.remove('show');
     this.snapToEdge();        // 先贴死右缘,人物才是从屏幕边上飘出去的
+    /* 落位规矩(用户拍板):拖到边上触发的——就在当下这个位置播,一个像素都别动;
+     * 点「收起」按钮触发的——人可能还在屏幕中间,先快速滑到右缘再播,
+     * 否则人物会在原地凭空消失,不像"贴到边上去了"。 */
+    if (from !== 'drag') {
+      const target = this.edgeLeftFor('dock_out');
+      let cur = parseFloat(w.style.left);
+      if (!Number.isFinite(cur)) { cur = w.getBoundingClientRect().left; w.style.left = cur + 'px'; }
+      w.style.right = 'auto';
+      if (Math.abs(cur - target) > 8) {
+        await new Promise((r) => requestAnimationFrame(r));
+        w.style.transition = 'left 0.18s ease-out';
+        w.style.left = target + 'px';
+        await new Promise((r) => setTimeout(r, 200));
+        w.style.transition = '';
+      }
+    }
     const pass = this.playOrSlide('dock_out', 'out');
     await this.waitPass(pass);
     w.style.visibility = 'hidden';
